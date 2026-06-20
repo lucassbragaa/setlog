@@ -109,7 +109,15 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
         <Stepper label="RIR" value={rir} max={10} onChange={setRir} />
       </View>
       <View style={styles.quickWeights}>
-        <Text style={styles.quickWeightsLabel}>ADICIONAR CARGA</Text>
+        <Text style={styles.quickWeightsLabel}>REDUZIR CARGA</Text>
+        <View style={styles.quickWeightsRow}>
+          {[2.5, 5, 10, 20].map(amount => (
+            <Pressable key={amount} style={[styles.quickWeight, styles.quickWeightReduce]} onPress={() => setWeight(value => Math.max(0, value - amount))}>
+              <Text style={styles.quickWeightReduceText}>{'−' + String(amount).replace('.', ',') + ' kg'}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={[styles.quickWeightsLabel, styles.addWeightLabel]}>ADICIONAR CARGA</Text>
         <View style={styles.quickWeightsRow}>
           {[2.5, 5, 10, 20].map(amount => (
             <Pressable key={amount} style={styles.quickWeight} onPress={() => setWeight(value => Math.min(999, value + amount))}>
@@ -308,6 +316,9 @@ const styles = StyleSheet.create({
   quickWeightsRow: { flexDirection: 'row', gap: 6 },
   quickWeight: { flex: 1, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingVertical: 9, alignItems: 'center' },
   quickWeightText: { color: colors.accent, fontSize: 10, fontWeight: '800' },
+  quickWeightReduce: { borderColor: '#6F3232', backgroundColor: '#261515' },
+  quickWeightReduceText: { color: colors.danger, fontSize: 10, fontWeight: '800' },
+  addWeightLabel: { marginTop: 10 },
   chips: { flexDirection: 'row', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, marginBottom: 10 },
   details: { backgroundColor: colors.elevated, borderRadius: 11, padding: 12, marginTop: 10 },
   detailTitle: { color: colors.text, fontSize: 11, fontWeight: '700', marginTop: 12 },
