@@ -61,6 +61,7 @@ export interface ProgramTemplate {
   id: string;
   name: string;
   description: string;
+  split?: 'Upper' | 'Lower';
   exercises: ProgramExercise[];
 }
 

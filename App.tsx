@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
-import { createDefaultData, sessionFromProgram } from './src/data/appDefaults';
+import { createDefaultData, mergeDefaultPrograms, sessionFromProgram } from './src/data/appDefaults';
 import { setupPwa } from './src/platform/pwa';
 import { AnalyticsScreen } from './src/screens/AnalyticsScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
@@ -42,7 +42,7 @@ export default function App() {
       .then(([stored, legacy]) => {
         if (!active) return;
         if (stored) {
-          setData(stored);
+          setData({ ...stored, programs: mergeDefaultPrograms(stored.programs) });
         } else if (legacy?.length) {
           setData(current => ({
             ...current,
