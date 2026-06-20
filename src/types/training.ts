@@ -35,14 +35,17 @@ export interface LoggedSet {
   notes?: string;
 }
 
-export interface ExerciseBlock {
-  id: string;
+export interface ProgramExercise {
   exerciseId: string;
   exerciseName: string;
   targetSets: number;
   targetRepRange: [number, number];
   targetRirRange: [number, number];
   targetRestSeconds: number;
+}
+
+export interface ExerciseBlock extends ProgramExercise {
+  id: string;
   sets: LoggedSet[];
 }
 
@@ -50,5 +53,19 @@ export interface WorkoutSession {
   id: string;
   name: string;
   startedAt: string;
+  endedAt?: string;
   exercises: ExerciseBlock[];
+}
+
+export interface ProgramTemplate {
+  id: string;
+  name: string;
+  description: string;
+  exercises: ProgramExercise[];
+}
+
+export interface AppData {
+  activeSession: WorkoutSession;
+  history: WorkoutSession[];
+  programs: ProgramTemplate[];
 }

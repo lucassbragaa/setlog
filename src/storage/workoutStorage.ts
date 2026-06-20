@@ -1,35 +1,32 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import type { LoggedSet } from '../types/training';
+import type { AppData, LoggedSet } from '../types/training';
 
-const ACTIVE_SETS_KEY = '@setlog/active-sets/v1';
+const APP_DATA_KEY = '@setlog/app-data/v2';
+const LEGACY_SETS_KEY = '@setlog/active-sets/v1';
 
-interface StoredSets {
-  version: 1;
-  updatedAt: string;
-  sets: LoggedSet[];
-}
-
-function isStoredSets(value: unknown): value is StoredSets {
+function isAppData(value: unknown): value is AppData {
   if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<StoredSets>;
-  return candidate.version === 1 && Array.isArray(candidate.sets);
+  const candidate = value as Partial<AppData>;
+  return Boolean(candidate.activeSession)
+    && Array.isArray(candidate.history)
+    && Array.isArray(candidate.programs);
 }
 
-export async function loadActiveSets(): Promise<LoggedSet[] | null> {
-  const raw = await AsyncStorage.getItem(ACTIVE_SETS_KEY);
+export async function loadAppData(): Promise<AppData | null> {
+  const raw = await AsyncStorage.getItem(APP_DATA_KEY);
   if (!raw) return null;
-
   const parsed: unknown = JSON.parse(raw);
-  return isStoredSets(parsed) ? parsed.sets : null;
+  return isAppData(parsed) ? parsed : null;
 }
 
-export async function saveActiveSets(sets: LoggedSet[]): Promise<void> {
-  const payload: StoredSets = {
-    version: 1,
-    updatedAt: new Date().toISOString(),
-    sets,
-  };
+export async function loadLegacySets(): Promise<LoggedSet[] | null> {
+  const raw = await AsyncStorage.getItem(LEGACY_SETS_KEY);
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as { sets?: LoggedSet[] };
+  return Array.isArray(parsed.sets) ? parsed.sets : null;
+}
 
-  await AsyncStorage.setItem(ACTIVE_SETS_KEY, JSON.stringify(payload));
+export async function saveAppData(data: AppData): Promise<void> {
+  await AsyncStorage.setItem(APP_DATA_KEY, JSON.stringify(data));
 }
