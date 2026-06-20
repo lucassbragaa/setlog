@@ -104,9 +104,19 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
         {nextPrescription ? <Text style={styles.target}>META {nextPrescription.repRange[0]}–{nextPrescription.repRange[1]} REPS · RIR {nextPrescription.rirRange[0]}–{nextPrescription.rirRange[1]}</Text> : null}
       </View>
       <View style={styles.steppers}>
-        <Stepper label="CARGA" value={weight} suffix=" kg" step={2.5} onChange={setWeight} />
+        <Stepper label="CARGA" value={weight} suffix=" kg" step={0.5} onChange={setWeight} />
         <Stepper label="REPS" value={reps} max={100} onChange={setReps} />
         <Stepper label="RIR" value={rir} max={10} onChange={setRir} />
+      </View>
+      <View style={styles.quickWeights}>
+        <Text style={styles.quickWeightsLabel}>ADICIONAR CARGA</Text>
+        <View style={styles.quickWeightsRow}>
+          {[2.5, 5, 10, 20].map(amount => (
+            <Pressable key={amount} style={styles.quickWeight} onPress={() => setWeight(value => Math.min(999, value + amount))}>
+              <Text style={styles.quickWeightText}>{'+' + String(amount).replace('.', ',') + ' kg'}</Text>
+            </Pressable>
+          ))}
+        </View>
       </View>
 
       <Text style={styles.detailTitle}>TÉCNICA DESTE SET</Text>
@@ -293,6 +303,11 @@ const styles = StyleSheet.create({
   next: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   target: { color: colors.muted, fontSize: 10, marginTop: 4 },
   steppers: { flexDirection: 'row', gap: 7, marginTop: 10 },
+  quickWeights: { marginTop: 10 },
+  quickWeightsLabel: { color: colors.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8, marginBottom: 7 },
+  quickWeightsRow: { flexDirection: 'row', gap: 6 },
+  quickWeight: { flex: 1, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingVertical: 9, alignItems: 'center' },
+  quickWeightText: { color: colors.accent, fontSize: 10, fontWeight: '800' },
   chips: { flexDirection: 'row', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, marginBottom: 10 },
   details: { backgroundColor: colors.elevated, borderRadius: 11, padding: 12, marginTop: 10 },
   detailTitle: { color: colors.text, fontSize: 11, fontWeight: '700', marginTop: 12 },
