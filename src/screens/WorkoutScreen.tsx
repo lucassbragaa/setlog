@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { exerciseLibrary } from '../data/appDefaults';
+import { prescriptionsFor, techniqueLabel, techniqueOptions } from '../data/techniques';
 import { colors } from '../theme';
 import type { ExerciseBlock, LoggedSet, RangeOfMotion, SetType, WorkoutSession } from '../types/training';
 import { ActionButton, Chip, commonStyles, ModalShell, ScreenTitle, Stepper } from '../ui';
@@ -17,15 +18,23 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
   onRemove: () => void;
 }) {
   const last = block.sets[block.sets.length - 1];
-  const [weight, setWeight] = useState(last?.loadKg ?? (block.exerciseId.includes('bench') ? 100 : 40));
-  const [reps, setReps] = useState(last?.repetitions ?? block.targetRepRange[1]);
-  const [rir, setRir] = useState(last?.rir ?? block.targetRirRange[1]);
-  const [type, setType] = useState<SetType>('working');
+  const prescriptions = prescriptionsFor(block);
+  const nextPrescription = prescriptions[Math.min(block.sets.length, prescriptions.length - 1)];
+  const [weight, setWeight] = useState(last?.loadKg ?? 40);
+  const [reps, setReps] = useState(nextPrescription.repRange[1]);
+  const [rir, setRir] = useState(nextPrescription.rirRange[1]);
+  const [type, setType] = useState<SetType>(nextPrescription.technique);
   const [details, setDetails] = useState(false);
   const [menu, setMenu] = useState(false);
   const [rom, setRom] = useState<RangeOfMotion>('full');
   const [quality, setQuality] = useState(4);
   const [pain, setPain] = useState(0);
+
+  useEffect(() => {
+    setReps(nextPrescription.repRange[1]);
+    setRir(nextPrescription.rirRange[1]);
+    setType(nextPrescription.technique);
+  }, [block.sets.length, nextPrescription.repRange[0], nextPrescription.repRange[1], nextPrescription.rirRange[0], nextPrescription.rirRange[1], nextPrescription.technique]);
 
   function logSet() {
     const set: LoggedSet = {
@@ -50,7 +59,10 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
           <View style={styles.number}><Text style={styles.numberText}>{String(index + 1).padStart(2, '0')}</Text></View>
           <View style={{ flex: 1 }}>
             <Text style={commonStyles.cardTitle}>{block.exerciseName}</Text>
-            <Text style={commonStyles.muted}>{block.targetSets} × {block.targetRepRange[0]}–{block.targetRepRange[1]} · {block.targetRirRange[0]}–{block.targetRirRange[1]} RIR</Text>
+            <Text style={commonStyles.muted}>
+              {prescriptions.length} sets · {prescriptions.map(item => techniqueLabel(item.technique)).join(' / ')}
+            </Text>
+            {block.notes ? <Text style={styles.notePreview}>Obs.: {block.notes}</Text> : null}
           </View>
         </View>
         <Pressable onPress={() => setMenu(value => !value)}><Text style={styles.more}>•••</Text></Pressable>
@@ -68,7 +80,7 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
       </View>
       {block.sets.length === 0 ? <Text style={styles.emptySets}>Nenhum set registrado.</Text> : block.sets.map(set => (
         <View style={styles.setRow} key={set.id}>
-          <Text style={styles.smallCell}>{set.order}</Text>
+          <View style={styles.smallCell}><Text style={styles.cellText}>{set.order}</Text><Text style={styles.techniqueMini}>{techniqueLabel(set.type)}</Text></View>
           <Text style={styles.cell}>{set.loadKg} kg</Text>
           <Text style={styles.cell}>{set.repetitions}</Text>
           <Text style={styles.cell}>{set.rir ?? '—'}</Text>
@@ -78,17 +90,25 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
         </View>
       ))}
 
-      <Text style={styles.next}>PRÓXIMO SET · {type === 'warmup' ? 'AQUECIMENTO' : 'TRABALHO'}</Text>
+      <View style={styles.nextPrescription}>
+        <Text style={styles.next}>PRÓXIMO SET · {techniqueLabel(type).toUpperCase()}</Text>
+        <Text style={styles.target}>
+          META {nextPrescription.repRange[0]}–{nextPrescription.repRange[1]} REPS · RIR {nextPrescription.rirRange[0]}–{nextPrescription.rirRange[1]}
+        </Text>
+      </View>
       <View style={styles.steppers}>
         <Stepper label="CARGA" value={weight} suffix=" kg" step={2.5} onChange={setWeight} />
-        <Stepper label="REPS" value={reps} max={50} onChange={setReps} />
+        <Stepper label="REPS" value={reps} max={100} onChange={setReps} />
         <Stepper label="RIR" value={rir} max={10} onChange={setRir} />
       </View>
+
+      <Text style={styles.detailTitle}>TÉCNICA DESTE SET</Text>
       <View style={styles.chips}>
-        <Chip label="Trabalho" selected={type === 'working'} onPress={() => setType('working')} />
-        <Chip label="Aquecimento" selected={type === 'warmup'} onPress={() => setType('warmup')} />
-        <Chip label={details ? '− Detalhes' : '+ Detalhes'} selected={details} onPress={() => setDetails(value => !value)} />
+        {techniqueOptions.map(option => (
+          <Chip key={option.value} label={option.label} selected={type === option.value} onPress={() => setType(option.value)} />
+        ))}
       </View>
+      <Chip label={details ? '− Fechar detalhes e observações' : '+ Detalhes e observações'} selected={details} onPress={() => setDetails(value => !value)} />
 
       {details && (
         <View style={styles.details}>
@@ -97,10 +117,19 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
             <Chip label="Completa" selected={rom === 'full'} onPress={() => setRom('full')} />
             <Chip label="Parcial alongada" selected={rom === 'lengthenedPartial'} onPress={() => setRom('lengthenedPartial')} />
           </View>
-          <Text style={styles.detailTitle}>Técnica · {quality}/5</Text>
+          <Text style={styles.detailTitle}>Técnica de execução · {quality}/5</Text>
           <Stepper label="QUALIDADE" value={quality} min={1} max={5} onChange={setQuality} />
           <Text style={styles.detailTitle}>Dor · {pain}/10</Text>
           <Stepper label="DOR" value={pain} max={10} onChange={setPain} />
+          <Text style={styles.detailTitle}>Observações do exercício</Text>
+          <TextInput
+            multiline
+            value={block.notes ?? ''}
+            onChangeText={notes => onChange({ ...block, notes })}
+            placeholder="Anote ajustes, execução, equipamento ou qualquer detalhe…"
+            placeholderTextColor={colors.textDim}
+            style={styles.notes}
+          />
         </View>
       )}
       <ActionButton label={'REGISTRAR SET ' + (block.sets.length + 1)} onPress={logSet} />
@@ -141,8 +170,19 @@ export function WorkoutScreen({ session, saveStatus, onChange, onFinish }: {
     onChange({
       ...session,
       exercises: [...session.exercises, {
-        id: 'block-' + now, exerciseId: item.id, exerciseName: item.name, targetSets: item.sets,
-        targetRepRange: item.reps, targetRirRange: item.rir, targetRestSeconds: item.rest, sets: [],
+        id: 'block-' + now,
+        exerciseId: item.id,
+        exerciseName: item.name,
+        targetSets: item.sets,
+        targetRepRange: item.reps,
+        targetRirRange: item.rir,
+        targetRestSeconds: item.rest,
+        setPrescriptions: Array.from({ length: item.sets }, () => ({
+          technique: 'working' as const,
+          repRange: [...item.reps] as [number, number],
+          rirRange: [...item.rir] as [number, number],
+        })),
+        sets: [],
       }],
     });
     setAddOpen(false);
@@ -192,7 +232,7 @@ export function WorkoutScreen({ session, saveStatus, onChange, onFinish }: {
           {exerciseLibrary.map(item => (
             <Pressable key={item.id} style={styles.libraryItem} onPress={() => addExercise(item)}>
               <Text style={commonStyles.cardTitle}>{item.name}</Text>
-              <Text style={commonStyles.muted}>{item.sets} × {item.reps[0]}–{item.reps[1]} · descanso {Math.round(item.rest / 60)} min</Text>
+              <Text style={commonStyles.muted}>A prescrição poderá ser editada em Programas.</Text>
             </Pressable>
           ))}
         </ScrollView>
@@ -213,20 +253,26 @@ const styles = StyleSheet.create({
   number: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.accentSoft, justifyContent: 'center', alignItems: 'center' },
   numberText: { color: colors.accent, fontWeight: '800', fontSize: 11 },
   more: { color: colors.muted, padding: 10, letterSpacing: 2 },
+  notePreview: { color: colors.textDim, fontSize: 10, fontStyle: 'italic', marginTop: 3 },
   inlineMenu: { backgroundColor: colors.elevated, borderRadius: 10, padding: 8, marginTop: 10 },
   tableHeader: { flexDirection: 'row', marginTop: 16, paddingBottom: 7 },
   column: { flex: 1, color: colors.muted, fontSize: 9, textAlign: 'center' },
-  smallColumn: { flex: 0.55, color: colors.muted, fontSize: 9, textAlign: 'center' },
-  setRow: { flexDirection: 'row', alignItems: 'center', minHeight: 38, borderTopWidth: 1, borderTopColor: colors.border },
+  smallColumn: { flex: 0.65, color: colors.muted, fontSize: 9, textAlign: 'center' },
+  setRow: { flexDirection: 'row', alignItems: 'center', minHeight: 46, borderTopWidth: 1, borderTopColor: colors.border },
   cell: { flex: 1, color: colors.text, fontSize: 13, textAlign: 'center', fontWeight: '600' },
-  smallCell: { flex: 0.55, color: colors.text, textAlign: 'center' },
+  cellText: { color: colors.text, textAlign: 'center', fontWeight: '700' },
+  smallCell: { flex: 0.65, alignItems: 'center', justifyContent: 'center' },
+  techniqueMini: { color: colors.accent, fontSize: 7, textAlign: 'center', marginTop: 2 },
   deleteSet: { color: colors.danger, fontSize: 20 },
   emptySets: { color: colors.textDim, fontSize: 12, paddingVertical: 13, textAlign: 'center', borderTopWidth: 1, borderColor: colors.border },
-  next: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 15 },
+  nextPrescription: { marginTop: 15 },
+  next: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  target: { color: colors.muted, fontSize: 10, marginTop: 4 },
   steppers: { flexDirection: 'row', gap: 7, marginTop: 10 },
-  chips: { flexDirection: 'row', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 10 },
+  chips: { flexDirection: 'row', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, marginBottom: 10 },
   details: { backgroundColor: colors.elevated, borderRadius: 11, padding: 12, marginTop: 10 },
-  detailTitle: { color: colors.text, fontSize: 11, fontWeight: '700', marginTop: 9 },
+  detailTitle: { color: colors.text, fontSize: 11, fontWeight: '700', marginTop: 12 },
+  notes: { minHeight: 90, color: colors.text, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 11, marginTop: 8, textAlignVertical: 'top' },
   live: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 7 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger },
   liveText: { color: colors.text, fontSize: 9, fontWeight: '800' },

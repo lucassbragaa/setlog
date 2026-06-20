@@ -77,7 +77,10 @@ export const exerciseLibrary = Array.from(
 
 export function mergeDefaultPrograms(storedPrograms: ProgramTemplate[]): ProgramTemplate[] {
   const customPrograms = storedPrograms.filter(program => program.id.startsWith('custom-'));
-  return [...defaultPrograms, ...customPrograms];
+  const personalizedPrograms = defaultPrograms.map(program =>
+    storedPrograms.find(stored => stored.id === program.id) ?? program,
+  );
+  return [...personalizedPrograms, ...customPrograms];
 }
 
 export function sessionFromProgram(program: ProgramTemplate): WorkoutSession {

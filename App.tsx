@@ -93,8 +93,8 @@ export default function App() {
       id: 'custom-' + now,
       name: 'Meu programa ' + (data.programs.filter(item => item.id.startsWith('custom-')).length + 1),
       description: 'Criado a partir do treino atual',
-      exercises: data.activeSession.exercises.map(({ exerciseId, exerciseName, targetSets, targetRepRange, targetRirRange, targetRestSeconds }) => ({
-        exerciseId, exerciseName, targetSets, targetRepRange, targetRirRange, targetRestSeconds,
+      exercises: data.activeSession.exercises.map(({ exerciseId, exerciseName, targetSets, targetRepRange, targetRirRange, targetRestSeconds, setPrescriptions, notes }) => ({
+        exerciseId, exerciseName, targetSets, targetRepRange, targetRirRange, targetRestSeconds, setPrescriptions, notes,
       })),
     };
     setData(current => ({ ...current, programs: [...current.programs, program] }));
@@ -121,6 +121,7 @@ export default function App() {
           onStart={startProgram}
           onDuplicate={duplicateProgram}
           onCreate={createProgramFromWorkout}
+          onUpdate={program => setData(current => ({ ...current, programs: current.programs.map(item => item.id === program.id ? program : item) }))}
           onDelete={id => setData(current => ({ ...current, programs: current.programs.filter(program => program.id !== id) }))}
         />
       )}

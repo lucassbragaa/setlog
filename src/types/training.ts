@@ -2,10 +2,14 @@ export type SetType =
   | 'warmup'
   | 'approach'
   | 'working'
+  | 'topSet'
   | 'backoff'
   | 'drop'
   | 'restPause'
-  | 'myoRep';
+  | 'myoRep'
+  | 'muscleRound'
+  | 'widowmaker'
+  | 'breathingCluster';
 
 export type RangeOfMotion = 'full' | 'lengthenedPartial' | 'shortenedPartial' | 'custom';
 
@@ -14,6 +18,12 @@ export interface Tempo {
   bottomPauseSeconds?: number;
   concentricSeconds?: number;
   topPauseSeconds?: number;
+}
+
+export interface SetPrescription {
+  technique: SetType;
+  repRange: [number, number];
+  rirRange: [number, number];
 }
 
 export interface LoggedSet {
@@ -42,6 +52,8 @@ export interface ProgramExercise {
   targetRepRange: [number, number];
   targetRirRange: [number, number];
   targetRestSeconds: number;
+  setPrescriptions?: SetPrescription[];
+  notes?: string;
 }
 
 export interface ExerciseBlock extends ProgramExercise {
