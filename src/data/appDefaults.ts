@@ -1,9 +1,11 @@
+import { removeLegacyGuess } from './techniques';
 import type { AppData, ProgramExercise, ProgramTemplate, WorkoutSession } from '../types/training';
 
 const DEFAULT_TARGET = {
-  targetSets: 3,
-  targetRepRange: [8, 12] as [number, number],
-  targetRirRange: [1, 2] as [number, number],
+  targetSets: 0,
+  targetRepRange: [0, 0] as [number, number],
+  targetRirRange: [0, 0] as [number, number],
+  setPrescriptions: [],
   targetRestSeconds: 120,
 };
 
@@ -78,7 +80,10 @@ export const exerciseLibrary = Array.from(
 export function mergeDefaultPrograms(storedPrograms: ProgramTemplate[]): ProgramTemplate[] {
   const customPrograms = storedPrograms.filter(program => program.id.startsWith('custom-'));
   const personalizedPrograms = defaultPrograms.map(program =>
-    storedPrograms.find(stored => stored.id === program.id) ?? program,
+    (() => {
+      const stored = storedPrograms.find(item => item.id === program.id);
+      return stored ? { ...stored, exercises: stored.exercises.map(removeLegacyGuess) } : program;
+    })(),
   );
   return [...personalizedPrograms, ...customPrograms];
 }

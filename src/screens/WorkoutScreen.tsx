@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { exerciseLibrary } from '../data/appDefaults';
+import { isProgramCode } from '../data/cycles';
 import { prescriptionsFor, techniqueLabel, techniqueOptions } from '../data/techniques';
 import { colors } from '../theme';
-import type { ExerciseBlock, LoggedSet, RangeOfMotion, SetType, WorkoutSession } from '../types/training';
+import type { ExerciseBlock, LoggedSet, ProgramTemplate, RangeOfMotion, SetType, WorkoutSession } from '../types/training';
 import { ActionButton, Chip, commonStyles, ModalShell, ScreenTitle, Stepper } from '../ui';
 
 function formatTimer(seconds: number) {
@@ -19,11 +20,11 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
 }) {
   const last = block.sets[block.sets.length - 1];
   const prescriptions = prescriptionsFor(block);
-  const nextPrescription = prescriptions[Math.min(block.sets.length, prescriptions.length - 1)];
-  const [weight, setWeight] = useState(last?.loadKg ?? 40);
-  const [reps, setReps] = useState(nextPrescription.repRange[1]);
-  const [rir, setRir] = useState(nextPrescription.rirRange[1]);
-  const [type, setType] = useState<SetType>(nextPrescription.technique);
+  const nextPrescription = prescriptions[block.sets.length];
+  const [weight, setWeight] = useState(last?.loadKg ?? 0);
+  const [reps, setReps] = useState(nextPrescription?.repRange[1] ?? last?.repetitions ?? 0);
+  const [rir, setRir] = useState(nextPrescription?.rirRange[1] ?? last?.rir ?? 0);
+  const [type, setType] = useState<SetType>(nextPrescription?.technique ?? 'working');
   const [details, setDetails] = useState(false);
   const [menu, setMenu] = useState(false);
   const [rom, setRom] = useState<RangeOfMotion>('full');
@@ -31,10 +32,18 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
   const [pain, setPain] = useState(0);
 
   useEffect(() => {
+    if (!nextPrescription) return;
     setReps(nextPrescription.repRange[1]);
     setRir(nextPrescription.rirRange[1]);
     setType(nextPrescription.technique);
-  }, [block.sets.length, nextPrescription.repRange[0], nextPrescription.repRange[1], nextPrescription.rirRange[0], nextPrescription.rirRange[1], nextPrescription.technique]);
+  }, [
+    block.sets.length,
+    nextPrescription?.repRange[0],
+    nextPrescription?.repRange[1],
+    nextPrescription?.rirRange[0],
+    nextPrescription?.rirRange[1],
+    nextPrescription?.technique,
+  ]);
 
   function logSet() {
     const set: LoggedSet = {
@@ -59,8 +68,8 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
           <View style={styles.number}><Text style={styles.numberText}>{String(index + 1).padStart(2, '0')}</Text></View>
           <View style={{ flex: 1 }}>
             <Text style={commonStyles.cardTitle}>{block.exerciseName}</Text>
-            <Text style={commonStyles.muted}>
-              {prescriptions.length} sets · {prescriptions.map(item => techniqueLabel(item.technique)).join(' / ')}
+            <Text style={prescriptions.length ? commonStyles.muted : styles.unprescribed}>
+              {prescriptions.length ? prescriptions.map(item => techniqueLabel(item.technique)).join(' / ') : 'Sem prescrição definida'}
             </Text>
             {block.notes ? <Text style={styles.notePreview}>Obs.: {block.notes}</Text> : null}
           </View>
@@ -91,10 +100,8 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
       ))}
 
       <View style={styles.nextPrescription}>
-        <Text style={styles.next}>PRÓXIMO SET · {techniqueLabel(type).toUpperCase()}</Text>
-        <Text style={styles.target}>
-          META {nextPrescription.repRange[0]}–{nextPrescription.repRange[1]} REPS · RIR {nextPrescription.rirRange[0]}–{nextPrescription.rirRange[1]}
-        </Text>
+        <Text style={styles.next}>{nextPrescription ? 'PRÓXIMO SET PRESCRITO' : 'PRÓXIMO SET · MANUAL'} · {techniqueLabel(type).toUpperCase()}</Text>
+        {nextPrescription ? <Text style={styles.target}>META {nextPrescription.repRange[0]}–{nextPrescription.repRange[1]} REPS · RIR {nextPrescription.rirRange[0]}–{nextPrescription.rirRange[1]}</Text> : null}
       </View>
       <View style={styles.steppers}>
         <Stepper label="CARGA" value={weight} suffix=" kg" step={2.5} onChange={setWeight} />
@@ -104,9 +111,7 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
 
       <Text style={styles.detailTitle}>TÉCNICA DESTE SET</Text>
       <View style={styles.chips}>
-        {techniqueOptions.map(option => (
-          <Chip key={option.value} label={option.label} selected={type === option.value} onPress={() => setType(option.value)} />
-        ))}
+        {techniqueOptions.map(option => <Chip key={option.value} label={option.label} selected={type === option.value} onPress={() => setType(option.value)} />)}
       </View>
       <Chip label={details ? '− Fechar detalhes e observações' : '+ Detalhes e observações'} selected={details} onPress={() => setDetails(value => !value)} />
 
@@ -122,14 +127,7 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
           <Text style={styles.detailTitle}>Dor · {pain}/10</Text>
           <Stepper label="DOR" value={pain} max={10} onChange={setPain} />
           <Text style={styles.detailTitle}>Observações do exercício</Text>
-          <TextInput
-            multiline
-            value={block.notes ?? ''}
-            onChangeText={notes => onChange({ ...block, notes })}
-            placeholder="Anote ajustes, execução, equipamento ou qualquer detalhe…"
-            placeholderTextColor={colors.textDim}
-            style={styles.notes}
-          />
+          <TextInput multiline value={block.notes ?? ''} onChangeText={notes => onChange({ ...block, notes })} placeholder="Execução, ajustes, equipamento ou qualquer detalhe…" placeholderTextColor={colors.textDim} style={styles.notes} />
         </View>
       )}
       <ActionButton label={'REGISTRAR SET ' + (block.sets.length + 1)} onPress={logSet} />
@@ -137,24 +135,34 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
   );
 }
 
-export function WorkoutScreen({ session, saveStatus, onChange, onFinish }: {
+export function WorkoutScreen({ session, programs, saveStatus, onChange, onFinish, onSelectProgram }: {
   session: WorkoutSession;
+  programs: ProgramTemplate[];
   saveStatus: 'loading' | 'saved' | 'error';
   onChange: (session: WorkoutSession) => void;
   onFinish: () => void;
+  onSelectProgram: (program: ProgramTemplate) => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [pendingProgram, setPendingProgram] = useState<ProgramTemplate | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
   const totalSets = session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
   const volume = useMemo(() => session.exercises.flatMap(exercise => exercise.sets).reduce((total, set) => total + set.loadKg * set.repetitions, 0), [session]);
+  const workoutPrograms = programs.filter(program => isProgramCode(program.name));
 
   useEffect(() => {
     if (!timerRunning) return;
     const timer = setInterval(() => setRestSeconds(value => value + 1), 1000);
     return () => clearInterval(timer);
   }, [timerRunning]);
+
+  function requestProgram(program: ProgramTemplate) {
+    if (program.id === session.programId || program.name === session.name) return;
+    if (totalSets > 0) setPendingProgram(program);
+    else onSelectProgram(program);
+  }
 
   function updateBlock(id: string, block: ExerciseBlock) {
     const oldCount = session.exercises.find(item => item.id === id)?.sets.length ?? 0;
@@ -173,15 +181,11 @@ export function WorkoutScreen({ session, saveStatus, onChange, onFinish }: {
         id: 'block-' + now,
         exerciseId: item.id,
         exerciseName: item.name,
-        targetSets: item.sets,
-        targetRepRange: item.reps,
-        targetRirRange: item.rir,
+        targetSets: 0,
+        targetRepRange: [0, 0],
+        targetRirRange: [0, 0],
         targetRestSeconds: item.rest,
-        setPrescriptions: Array.from({ length: item.sets }, () => ({
-          technique: 'working' as const,
-          repRange: [...item.reps] as [number, number],
-          rirRange: [...item.rir] as [number, number],
-        })),
+        setPrescriptions: [],
         sets: [],
       }],
     });
@@ -191,8 +195,22 @@ export function WorkoutScreen({ session, saveStatus, onChange, onFinish }: {
   return (
     <>
       <ScrollView contentContainerStyle={commonStyles.screen} showsVerticalScrollIndicator={false}>
+        <View style={styles.selector}>
+          <View style={commonStyles.between}>
+            <View><Text style={styles.selectorLabel}>TREINO DE HOJE</Text><Text style={styles.selectorTitle}>Escolha A1–B4</Text></View>
+            {session.cycleNumber ? <View style={styles.cycleBadge}><Text style={styles.cycleText}>CICLO {session.cycleNumber}</Text></View> : null}
+          </View>
+          <View style={styles.programChoices}>
+            {workoutPrograms.map(program => (
+              <Pressable key={program.id} style={[styles.programChoice, session.name === program.name && styles.programChoiceSelected]} onPress={() => requestProgram(program)}>
+                <Text style={[styles.programChoiceText, session.name === program.name && styles.programChoiceTextSelected]}>{program.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+
         <View style={commonStyles.between}>
-          <ScreenTitle eyebrow="SESSÃO EM ANDAMENTO" title={session.name} subtitle={session.exercises.length + ' exercícios · ' + totalSets + ' sets'} />
+          <ScreenTitle eyebrow="SESSÃO EM ANDAMENTO" title={session.name} subtitle={session.exercises.length + ' exercícios · ' + totalSets + ' sets registrados'} />
           <View style={styles.live}><View style={styles.dot} /><Text style={styles.liveText}>LIVE</Text></View>
         </View>
         <Text style={[styles.save, saveStatus === 'error' && { color: colors.danger }]}>{saveStatus === 'saved' ? '● Salvo neste dispositivo' : saveStatus === 'error' ? 'Falha ao salvar' : 'Salvando…'}</Text>
@@ -215,26 +233,21 @@ export function WorkoutScreen({ session, saveStatus, onChange, onFinish }: {
         ) : null}
 
         {session.exercises.map((block, index) => (
-          <ExerciseCard
-            key={block.id}
-            block={block}
-            index={index}
-            onChange={next => updateBlock(block.id, next)}
-            onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })}
-          />
+          <ExerciseCard key={block.id} block={block} index={index} onChange={next => updateBlock(block.id, next)} onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })} />
         ))}
         <ActionButton label="+ ADICIONAR EXERCÍCIO" tone="secondary" onPress={() => setAddOpen(true)} />
         <ActionButton label="Finalizar treino" tone="danger" disabled={totalSets === 0} onPress={() => setFinishOpen(true)} />
       </ScrollView>
 
+      <ModalShell visible={Boolean(pendingProgram)} title="Trocar treino em andamento?" onClose={() => setPendingProgram(null)}>
+        <Text style={commonStyles.muted}>Você já registrou {totalSets} sets. Trocar agora substituirá esta sessão ativa; os treinos finalizados no histórico não serão afetados.</Text>
+        <ActionButton label={'TROCAR PARA ' + (pendingProgram?.name ?? '')} tone="danger" onPress={() => { if (pendingProgram) onSelectProgram(pendingProgram); setPendingProgram(null); }} />
+        <ActionButton label="Continuar neste treino" tone="secondary" onPress={() => setPendingProgram(null)} />
+      </ModalShell>
+
       <ModalShell visible={addOpen} title="Adicionar exercício" onClose={() => setAddOpen(false)}>
         <ScrollView>
-          {exerciseLibrary.map(item => (
-            <Pressable key={item.id} style={styles.libraryItem} onPress={() => addExercise(item)}>
-              <Text style={commonStyles.cardTitle}>{item.name}</Text>
-              <Text style={commonStyles.muted}>A prescrição poderá ser editada em Programas.</Text>
-            </Pressable>
-          ))}
+          {exerciseLibrary.map(item => <Pressable key={item.id} style={styles.libraryItem} onPress={() => addExercise(item)}><Text style={commonStyles.cardTitle}>{item.name}</Text><Text style={commonStyles.muted}>Sem prescrição automática.</Text></Pressable>)}
         </ScrollView>
       </ModalShell>
 
@@ -248,10 +261,21 @@ export function WorkoutScreen({ session, saveStatus, onChange, onFinish }: {
 }
 
 const styles = StyleSheet.create({
+  selector: { backgroundColor: colors.card, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 18 },
+  selectorLabel: { color: colors.accent, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  selectorTitle: { color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 3 },
+  cycleBadge: { backgroundColor: colors.accentSoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
+  cycleText: { color: colors.accent, fontSize: 8, fontWeight: '800' },
+  programChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
+  programChoice: { width: '22.5%', borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingVertical: 9, alignItems: 'center' },
+  programChoiceSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  programChoiceText: { color: colors.muted, fontSize: 11, fontWeight: '800' },
+  programChoiceTextSelected: { color: colors.background },
   exerciseCard: { ...commonStyles.card, padding: 15 },
   exerciseHeader: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   number: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.accentSoft, justifyContent: 'center', alignItems: 'center' },
   numberText: { color: colors.accent, fontWeight: '800', fontSize: 11 },
+  unprescribed: { color: colors.textDim, fontSize: 11, marginTop: 2 },
   more: { color: colors.muted, padding: 10, letterSpacing: 2 },
   notePreview: { color: colors.textDim, fontSize: 10, fontStyle: 'italic', marginTop: 3 },
   inlineMenu: { backgroundColor: colors.elevated, borderRadius: 10, padding: 8, marginTop: 10 },

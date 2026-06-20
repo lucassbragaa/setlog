@@ -3,9 +3,9 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { completedCodes, currentCycleNumber, MAX_CYCLES, nextProgramCode, PROGRAM_SEQUENCE, totalCycleCompletions } from '../data/cycles';
 import { colors } from '../theme';
 import type { WorkoutSession } from '../types/training';
-import { commonStyles, ScreenTitle } from '../ui';
+import { ActionButton, commonStyles, ScreenTitle } from '../ui';
 
-export function CyclesScreen({ history }: { history: WorkoutSession[] }) {
+export function CyclesScreen({ history, onExport, onImport }: { history: WorkoutSession[]; onExport: () => void; onImport: () => void }) {
   const currentCycle = currentCycleNumber(history);
   const currentDone = completedCodes(history, currentCycle);
   const totalDone = totalCycleCompletions(history);
@@ -50,6 +50,13 @@ export function CyclesScreen({ history }: { history: WorkoutSession[] }) {
         </View>
         <Text style={[commonStyles.muted, { marginTop: 4 }]}>{totalDone} de {totalPlanned} treinos concluídos</Text>
         <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${overallPercent}%` }]} /></View>
+      </View>
+
+      <View style={commonStyles.card}>
+        <Text style={commonStyles.cardTitle}>Backup dos dados</Text>
+        <Text style={[commonStyles.muted, { marginTop: 6 }]}>Inclui prescrições, treino ativo, histórico, ciclos, observações e todos os sets registrados. Guarde o arquivo no iCloud ou no app Arquivos.</Text>
+        <ActionButton label="EXPORTAR BACKUP COMPLETO" onPress={onExport} />
+        <ActionButton label="RESTAURAR BACKUP" tone="secondary" onPress={onImport} />
       </View>
 
       <View style={commonStyles.card}>

@@ -4,6 +4,7 @@ import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 import { createDefaultData, mergeDefaultPrograms, sessionFromProgram } from './src/data/appDefaults';
 import { currentCycleNumber, isProgramCode } from './src/data/cycles';
+import { chooseBackupFile, exportBackup } from './src/platform/backup';
 import { setupPwa } from './src/platform/pwa';
 import { AnalyticsScreen } from './src/screens/AnalyticsScreen';
 import { CyclesScreen } from './src/screens/CyclesScreen';
@@ -106,6 +107,11 @@ export default function App() {
     }));
   }
 
+  async function restoreBackup() {
+    const restored = await chooseBackupFile();
+    if (restored) setData({ ...restored, programs: mergeDefaultPrograms(restored.programs) });
+  }
+
   function createProgramFromWorkout() {
     const now = Date.now();
     const program: ProgramTemplate = {
@@ -125,12 +131,14 @@ export default function App() {
       {activeTab === 'Treino' && (
         <WorkoutScreen
           session={data.activeSession}
+          programs={data.programs}
           saveStatus={saveStatus}
           onChange={session => setData(current => ({ ...current, activeSession: session }))}
           onFinish={finishWorkout}
+          onSelectProgram={startProgram}
         />
       )}
-      {activeTab === 'Ciclos' && <CyclesScreen history={data.history} />}
+      {activeTab === 'Ciclos' && <CyclesScreen history={data.history} onExport={() => exportBackup(data)} onImport={restoreBackup} />}
       {activeTab === 'Histórico' && (
         <HistoryScreen history={data.history} onDelete={id => setData(current => ({ ...current, history: current.history.filter(session => session.id !== id) }))} />
       )}
