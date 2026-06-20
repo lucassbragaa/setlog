@@ -66,6 +66,8 @@ export interface WorkoutSession {
   name: string;
   startedAt: string;
   endedAt?: string;
+  programId?: string;
+  cycleNumber?: number;
   exercises: ExerciseBlock[];
 }
 

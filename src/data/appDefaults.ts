@@ -83,11 +83,13 @@ export function mergeDefaultPrograms(storedPrograms: ProgramTemplate[]): Program
   return [...personalizedPrograms, ...customPrograms];
 }
 
-export function sessionFromProgram(program: ProgramTemplate): WorkoutSession {
+export function sessionFromProgram(program: ProgramTemplate, cycleNumber?: number): WorkoutSession {
   const now = Date.now();
   return {
     id: `session-${now}`,
     name: program.name,
+    programId: program.id,
+    cycleNumber,
     startedAt: new Date(now).toISOString(),
     exercises: program.exercises.map((item, index) => ({
       ...item,
