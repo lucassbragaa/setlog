@@ -10,7 +10,9 @@ const bundleDirectory = new URL('_expo/static/js/web/', distUrl);
 let html = await readFile(indexUrl, 'utf8');
 html = html
   .replace('href="/manifest.webmanifest"', `href="${basePath}/manifest.webmanifest"`)
-  .replace('href="/icons/icon-1024.png"', `href="${basePath}/icons/icon-1024.png"`);
+  .replace('href="/icons/icon-1024.png"', `href="${basePath}/icons/icon-1024.png"`)
+  .replace('href="/favicon.ico"', `href="${basePath}/favicon.ico"`)
+  .replaceAll('src="/_expo/', `src="${basePath}/_expo/`);
 await writeFile(indexUrl, html, 'utf8');
 
 const manifest = JSON.parse(await readFile(manifestUrl, 'utf8'));
