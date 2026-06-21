@@ -3,14 +3,96 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 
 import { exerciseLibrary } from '../data/appDefaults';
 import { isProgramCode } from '../data/cycles';
-import { prescriptionsFor, techniqueLabel, techniqueOptions } from '../data/techniques';
+import { setVolumeKg } from '../data/setMetrics';
+import { configForTechnique, prescriptionSummary, prescriptionsFor, techniqueLabel, techniqueOptions, techniqueProfile } from '../data/techniques';
 import { colors } from '../theme';
-import type { ExerciseBlock, LoggedSet, ProgramTemplate, RangeOfMotion, SetType, WorkoutSession } from '../types/training';
+import type { ExerciseBlock, LoggedSet, ProgramTemplate, RangeOfMotion, SetPrescription, SetType, TechniqueConfig, WorkoutSession } from '../types/training';
 import { ActionButton, Chip, commonStyles, ModalShell, ScreenTitle, Stepper } from '../ui';
 
 function formatTimer(seconds: number) {
   return Math.floor(seconds / 60).toString().padStart(2, '0') + ':' + (seconds % 60).toString().padStart(2, '0');
 }
+function buildSegments(type: SetType, primaryReps: number, prescription?: SetPrescription): number[] {
+  const config = configForTechnique(type, prescription?.techniqueConfig);
+  const profile = techniqueProfile(type);
+  const blocks = Math.max(1, config?.blocks ?? 1);
+  if (profile.mode === 'single' || blocks === 1) return [primaryReps];
+  const secondary = config?.secondaryRepRange?.[1] ?? primaryReps;
+  return Array.from({ length: blocks }, (_, index) => index === 0 ? primaryReps : secondary);
+}
+
+function techniqueExecutionSummary(set: LoggedSet): string | null {
+  const details = set.techniqueDetails;
+  if (!details) return null;
+  const parts: string[] = [];
+  if (details.segmentRepetitions.length > 1) parts.push(details.segmentRepetitions.join('+') + ' reps');
+  if (details.intraSetRestSeconds !== undefined) parts.push(details.intraSetRestSeconds + 's');
+  if (details.loadDropPercent !== undefined) parts.push('−' + details.loadDropPercent + '%');
+  if (details.breathsBetweenBlocks !== undefined) parts.push(details.breathsBetweenBlocks + ' resp.');
+  if (details.durationSeconds !== undefined) parts.push(formatTimer(details.durationSeconds));
+  return parts.length ? parts.join(' · ') : null;
+}
+
+function TechniqueExecutionInputs({ type, config, segments, durationSeconds, onConfigChange, onSegmentsChange, onDurationChange }: {
+  type: SetType;
+  config?: TechniqueConfig;
+  segments: number[];
+  durationSeconds: number;
+  onConfigChange: (next: TechniqueConfig | undefined) => void;
+  onSegmentsChange: (next: number[]) => void;
+  onDurationChange: (next: number) => void;
+}) {
+  const profile = techniqueProfile(type);
+  const hasMultipleBlocks = segments.length > 1;
+
+  function updateSegment(index: number, value: number) {
+    onSegmentsChange(segments.map((item, itemIndex) => itemIndex === index ? value : item));
+  }
+
+  function updateConfig(patch: Partial<TechniqueConfig>) {
+    onConfigChange({ ...config, ...patch });
+  }
+
+  if (!hasMultipleBlocks && !profile.showDuration && config?.breathsBetweenBlocks === undefined) return null;
+
+  return (
+    <View style={styles.techniqueExecution}>
+      <Text style={styles.techniqueHelp}>{profile.explanation}</Text>
+      {hasMultipleBlocks ? (
+        <>
+          <Text style={styles.quickWeightsLabel}>REPETIÇÕES POR BLOCO</Text>
+          <View style={styles.segmentGrid}>
+            {segments.map((value, index) => {
+              const label = index === 0
+                ? profile.primaryRepsLabel
+                : profile.mode === 'drop' ? 'QUEDA ' + index : 'BLOCO ' + (index + 1);
+              return (
+                <View key={index} style={styles.segmentItem}>
+                  <Stepper label={label} value={value} max={100} onChange={next => updateSegment(index, next)} />
+                </View>
+              );
+            })}
+          </View>
+        </>
+      ) : null}
+      <View style={styles.steppers}>
+        {config?.intraSetRestSeconds !== undefined ? (
+          <Stepper label="PAUSA INTERNA" value={config.intraSetRestSeconds} suffix=" s" min={0} max={120} step={5} onChange={value => updateConfig({ intraSetRestSeconds: value })} />
+        ) : null}
+        {config?.loadDropPercent !== undefined ? (
+          <Stepper label="REDUÇÃO / QUEDA" value={config.loadDropPercent} suffix="%" min={0} max={80} step={5} onChange={value => updateConfig({ loadDropPercent: value })} />
+        ) : null}
+        {config?.breathsBetweenBlocks !== undefined ? (
+          <Stepper label="RESPIRAÇÕES" value={config.breathsBetweenBlocks} min={1} max={20} onChange={value => updateConfig({ breathsBetweenBlocks: value })} />
+        ) : null}
+        {profile.showDuration ? (
+          <Stepper label="DURAÇÃO" value={durationSeconds} suffix=" s" min={0} max={600} step={5} onChange={onDurationChange} />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 
 function ExerciseCard({ block, index, onChange, onRemove }: {
   block: ExerciseBlock;
@@ -25,6 +107,9 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
   const [reps, setReps] = useState(nextPrescription?.repRange[1] ?? last?.repetitions ?? 0);
   const [rir, setRir] = useState(nextPrescription?.rirRange[1] ?? last?.rir ?? 0);
   const [type, setType] = useState<SetType>(nextPrescription?.technique ?? 'working');
+  const [techniqueConfig, setTechniqueConfig] = useState<TechniqueConfig | undefined>(() => configForTechnique(nextPrescription?.technique ?? 'working', nextPrescription?.techniqueConfig));
+  const [segmentReps, setSegmentReps] = useState<number[]>(() => buildSegments(nextPrescription?.technique ?? 'working', nextPrescription?.repRange[1] ?? last?.repetitions ?? 0, nextPrescription));
+  const [durationSeconds, setDurationSeconds] = useState(0);
   const [details, setDetails] = useState(false);
   const [menu, setMenu] = useState(false);
   const [rom, setRom] = useState<RangeOfMotion>('full');
@@ -36,6 +121,9 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
     setReps(nextPrescription.repRange[1]);
     setRir(nextPrescription.rirRange[1]);
     setType(nextPrescription.technique);
+    setTechniqueConfig(configForTechnique(nextPrescription.technique, nextPrescription.techniqueConfig));
+    setSegmentReps(buildSegments(nextPrescription.technique, nextPrescription.repRange[1], nextPrescription));
+    setDurationSeconds(0);
   }, [
     block.sets.length,
     nextPrescription?.repRange[0],
@@ -43,20 +131,31 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
     nextPrescription?.rirRange[0],
     nextPrescription?.rirRange[1],
     nextPrescription?.technique,
+    nextPrescription?.techniqueConfig,
   ]);
 
   function logSet() {
+    const profile = techniqueProfile(type);
+    const actualSegments = profile.mode === 'single' || (techniqueConfig?.blocks ?? 1) === 1 ? [reps] : segmentReps;
+    const totalRepetitions = actualSegments.reduce((total, value) => total + value, 0);
     const set: LoggedSet = {
       id: 'set-' + Date.now() + '-' + block.id,
       order: block.sets.length + 1,
       type,
       loadKg: weight,
-      repetitions: reps,
+      repetitions: totalRepetitions,
       rir,
       completedAt: new Date().toISOString(),
       rangeOfMotion: rom,
       techniqueQuality: quality as 1 | 2 | 3 | 4 | 5,
       painScore: pain,
+      techniqueDetails: {
+        segmentRepetitions: actualSegments,
+        intraSetRestSeconds: techniqueConfig?.intraSetRestSeconds,
+        loadDropPercent: techniqueConfig?.loadDropPercent,
+        breathsBetweenBlocks: techniqueConfig?.breathsBetweenBlocks,
+        durationSeconds: techniqueProfile(type).showDuration ? durationSeconds : undefined,
+      },
     };
     onChange({ ...block, sets: [...block.sets, set] });
   }
@@ -89,7 +188,7 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
       </View>
       {block.sets.length === 0 ? <Text style={styles.emptySets}>Nenhum set registrado.</Text> : block.sets.map(set => (
         <View style={styles.setRow} key={set.id}>
-          <View style={styles.smallCell}><Text style={styles.cellText}>{set.order}</Text><Text style={styles.techniqueMini}>{techniqueLabel(set.type)}</Text></View>
+          <View style={styles.smallCell}><Text style={styles.cellText}>{set.order}</Text><Text style={styles.techniqueMini}>{techniqueLabel(set.type)}</Text>{techniqueExecutionSummary(set) ? <Text style={styles.techniqueDetailMini}>{techniqueExecutionSummary(set)}</Text> : null}</View>
           <Text style={styles.cell}>{set.loadKg} kg</Text>
           <Text style={styles.cell}>{set.repetitions}</Text>
           <Text style={styles.cell}>{set.rir ?? '—'}</Text>
@@ -101,11 +200,11 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
 
       <View style={styles.nextPrescription}>
         <Text style={styles.next}>{nextPrescription ? 'PRÓXIMO SET PRESCRITO' : 'PRÓXIMO SET · MANUAL'} · {techniqueLabel(type).toUpperCase()}</Text>
-        {nextPrescription ? <Text style={styles.target}>META {nextPrescription.repRange[0]}–{nextPrescription.repRange[1]} REPS · RIR {nextPrescription.rirRange[0]}–{nextPrescription.rirRange[1]}</Text> : null}
+        {nextPrescription ? <Text style={styles.target}>META {prescriptionSummary(nextPrescription).toUpperCase()} · RIR {nextPrescription.rirRange[0]}–{nextPrescription.rirRange[1]}</Text> : null}
       </View>
       <View style={styles.steppers}>
         <Stepper label="CARGA" value={weight} suffix=" kg" step={0.5} onChange={setWeight} />
-        <Stepper label="REPS" value={reps} max={100} onChange={setReps} />
+        {(techniqueProfile(type).mode === 'single' || (techniqueConfig?.blocks ?? 1) === 1) ? <Stepper label={techniqueProfile(type).primaryRepsLabel} value={reps} max={100} onChange={setReps} /> : null}
         <Stepper label="RIR" value={rir} max={10} onChange={setRir} />
       </View>
       <View style={styles.quickWeights}>
@@ -127,9 +226,19 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
         </View>
       </View>
 
+      <TechniqueExecutionInputs
+        type={type}
+        config={techniqueConfig}
+        segments={segmentReps}
+        durationSeconds={durationSeconds}
+        onConfigChange={setTechniqueConfig}
+        onSegmentsChange={setSegmentReps}
+        onDurationChange={setDurationSeconds}
+      />
+
       <Text style={styles.detailTitle}>TÉCNICA DESTE SET</Text>
       <View style={styles.chips}>
-        {techniqueOptions.map(option => <Chip key={option.value} label={option.label} selected={type === option.value} onPress={() => setType(option.value)} />)}
+        {techniqueOptions.map(option => <Chip key={option.value} label={option.label} selected={type === option.value} onPress={() => { const config = configForTechnique(option.value); setType(option.value); setTechniqueConfig(config); setSegmentReps(buildSegments(option.value, reps, { technique: option.value, repRange: [reps, reps], rirRange: [rir, rir], techniqueConfig: config })); setDurationSeconds(0); }} />)}
       </View>
       <Chip label={details ? '− Fechar detalhes e observações' : '+ Detalhes e observações'} selected={details} onPress={() => setDetails(value => !value)} />
 
@@ -167,7 +276,7 @@ export function WorkoutScreen({ session, programs, saveStatus, onChange, onFinis
   const [restSeconds, setRestSeconds] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
   const totalSets = session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
-  const volume = useMemo(() => session.exercises.flatMap(exercise => exercise.sets).reduce((total, set) => total + set.loadKg * set.repetitions, 0), [session]);
+  const volume = useMemo(() => session.exercises.flatMap(exercise => exercise.sets).reduce((total, set) => total + setVolumeKg(set), 0), [session]);
   const workoutPrograms = programs.filter(program => isProgramCode(program.name));
 
   useEffect(() => {
@@ -305,12 +414,17 @@ const styles = StyleSheet.create({
   cellText: { color: colors.text, textAlign: 'center', fontWeight: '700' },
   smallCell: { flex: 0.65, alignItems: 'center', justifyContent: 'center' },
   techniqueMini: { color: colors.accent, fontSize: 7, textAlign: 'center', marginTop: 2 },
+  techniqueDetailMini: { color: colors.textDim, fontSize: 6, textAlign: 'center', marginTop: 2 },
   deleteSet: { color: colors.danger, fontSize: 20 },
   emptySets: { color: colors.textDim, fontSize: 12, paddingVertical: 13, textAlign: 'center', borderTopWidth: 1, borderColor: colors.border },
   nextPrescription: { marginTop: 15 },
   next: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   target: { color: colors.muted, fontSize: 10, marginTop: 4 },
   steppers: { flexDirection: 'row', gap: 7, marginTop: 10 },
+  techniqueExecution: { backgroundColor: colors.elevated, borderRadius: 12, padding: 10, marginTop: 12 },
+  techniqueHelp: { color: colors.textDim, fontSize: 10, lineHeight: 15, marginBottom: 10 },
+  segmentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  segmentItem: { width: '31%', minWidth: 92 },
   quickWeights: { marginTop: 10 },
   quickWeightsLabel: { color: colors.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8, marginBottom: 7 },
   quickWeightsRow: { flexDirection: 'row', gap: 6 },

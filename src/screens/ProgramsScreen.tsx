@@ -1,12 +1,62 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { emptyPrescription, exerciseWithPrescriptions, prescriptionsFor, techniqueLabel, techniqueOptions } from '../data/techniques';
+import { configForTechnique, emptyPrescription, exerciseWithPrescriptions, prescriptionSummary, prescriptionsFor, techniqueLabel, techniqueOptions, techniqueProfile } from '../data/techniques';
 import { colors } from '../theme';
 import type { ProgramExercise, ProgramTemplate, SetPrescription } from '../types/training';
 import { ActionButton, Chip, commonStyles, ModalShell, ScreenTitle, Stepper } from '../ui';
 
 type EditorTarget = { programId: string; exerciseIndex: number };
+function TechniquePrescriptionEditor({ prescription, onChange }: {
+  prescription: SetPrescription;
+  onChange: (next: SetPrescription) => void;
+}) {
+  const profile = techniqueProfile(prescription.technique);
+  const config = configForTechnique(prescription.technique, prescription.techniqueConfig);
+
+  function updateConfig(patch: Partial<NonNullable<SetPrescription['techniqueConfig']>>) {
+    onChange({ ...prescription, techniqueConfig: { ...config, ...patch } });
+  }
+
+  return (
+    <>
+      <Text style={styles.techniqueHelp}>{profile.explanation}</Text>
+      <View style={styles.steppers}>
+        <Stepper label={profile.primaryRepsLabel + ' MÍN.'} value={prescription.repRange[0]} max={100} onChange={value => onChange({ ...prescription, repRange: [value, Math.max(value, prescription.repRange[1])] })} />
+        <Stepper label={profile.primaryRepsLabel + ' MÁX.'} value={prescription.repRange[1]} max={100} onChange={value => onChange({ ...prescription, repRange: [Math.min(prescription.repRange[0], value), value] })} />
+      </View>
+      {profile.secondaryRepsLabel && config?.secondaryRepRange ? (
+        <View style={styles.steppers}>
+          <Stepper label={profile.secondaryRepsLabel + ' MÍN.'} value={config.secondaryRepRange[0]} max={100} onChange={value => updateConfig({ secondaryRepRange: [value, Math.max(value, config.secondaryRepRange![1])] })} />
+          <Stepper label={profile.secondaryRepsLabel + ' MÁX.'} value={config.secondaryRepRange[1]} max={100} onChange={value => updateConfig({ secondaryRepRange: [Math.min(config.secondaryRepRange![0], value), value] })} />
+        </View>
+      ) : null}
+      {profile.blocksLabel && config?.blocks !== undefined ? (
+        <View style={styles.steppers}>
+          <Stepper label={profile.blocksLabel} value={config.blocks} min={1} max={10} onChange={value => updateConfig({ blocks: value })} />
+          {config.intraSetRestSeconds !== undefined ? (
+            <Stepper label="PAUSA INTERNA" value={config.intraSetRestSeconds} suffix=" s" min={0} max={120} step={5} onChange={value => updateConfig({ intraSetRestSeconds: value })} />
+          ) : null}
+        </View>
+      ) : null}
+      {config?.loadDropPercent !== undefined ? (
+        <View style={styles.steppers}>
+          <Stepper label="REDUÇÃO POR QUEDA" value={config.loadDropPercent} suffix="%" min={0} max={80} step={5} onChange={value => updateConfig({ loadDropPercent: value })} />
+        </View>
+      ) : null}
+      {config?.breathsBetweenBlocks !== undefined ? (
+        <View style={styles.steppers}>
+          <Stepper label="RESPIRAÇÕES ENTRE BLOCOS" value={config.breathsBetweenBlocks} min={1} max={20} onChange={value => updateConfig({ breathsBetweenBlocks: value })} />
+        </View>
+      ) : null}
+      <View style={styles.steppers}>
+        <Stepper label="RIR MÍN." value={prescription.rirRange[0]} max={10} onChange={value => onChange({ ...prescription, rirRange: [value, Math.max(value, prescription.rirRange[1])] })} />
+        <Stepper label="RIR MÁX." value={prescription.rirRange[1]} max={10} onChange={value => onChange({ ...prescription, rirRange: [Math.min(prescription.rirRange[0], value), value] })} />
+      </View>
+    </>
+  );
+}
+
 
 export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onDelete, onUpdate }: {
   programs: ProgramTemplate[];
@@ -75,7 +125,7 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onDel
                       <Text style={[styles.exercisePrescription, sets.length === 0 && styles.undefined]}>
                         {sets.length === 0
                           ? 'Sem prescrição · toque para configurar'
-                          : sets.map((set, setIndex) => `${setIndex + 1} ${techniqueLabel(set.technique)} ${set.repRange[0]}–${set.repRange[1]} · RIR ${set.rirRange[0]}–${set.rirRange[1]}`).join('  |  ')}
+                          : sets.map((set, setIndex) => `${setIndex + 1} ${techniqueLabel(set.technique)} · ${prescriptionSummary(set)} · RIR ${set.rirRange[0]}–${set.rirRange[1]}`).join('  |  ')}
                       </Text>
                       {exercise.notes ? <Text style={styles.notePreview}>Obs.: {exercise.notes}</Text> : null}
                     </View>
@@ -111,17 +161,10 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onDel
                   <Text style={styles.fieldLabel}>Técnica</Text>
                   <View style={styles.chips}>
                     {techniqueOptions.map(option => (
-                      <Chip key={option.value} label={option.label} selected={set.technique === option.value} onPress={() => updateSet(setIndex, { ...set, technique: option.value })} />
+                      <Chip key={option.value} label={option.label} selected={set.technique === option.value} onPress={() => updateSet(setIndex, { ...set, technique: option.value, techniqueConfig: configForTechnique(option.value) })} />
                     ))}
                   </View>
-                  <View style={styles.steppers}>
-                    <Stepper label="REP MÍN." value={set.repRange[0]} max={100} onChange={value => updateSet(setIndex, { ...set, repRange: [value, Math.max(value, set.repRange[1])] })} />
-                    <Stepper label="REP MÁX." value={set.repRange[1]} max={100} onChange={value => updateSet(setIndex, { ...set, repRange: [Math.min(set.repRange[0], value), value] })} />
-                  </View>
-                  <View style={styles.steppers}>
-                    <Stepper label="RIR MÍN." value={set.rirRange[0]} max={10} onChange={value => updateSet(setIndex, { ...set, rirRange: [value, Math.max(value, set.rirRange[1])] })} />
-                    <Stepper label="RIR MÁX." value={set.rirRange[1]} max={10} onChange={value => updateSet(setIndex, { ...set, rirRange: [Math.min(set.rirRange[0], value), value] })} />
-                  </View>
+                  <TechniquePrescriptionEditor prescription={set} onChange={next => updateSet(setIndex, next)} />
                 </View>
               ))}
 
@@ -157,6 +200,7 @@ const styles = StyleSheet.create({
   setEditor: { backgroundColor: colors.elevated, borderRadius: 12, padding: 12, marginTop: 12 },
   setTitle: { color: colors.text, fontSize: 15, fontWeight: '800' },
   fieldLabel: { color: colors.muted, fontSize: 10, fontWeight: '700', marginTop: 11 },
+  techniqueHelp: { color: colors.textDim, fontSize: 10, lineHeight: 15, marginTop: 10 },
   chips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 8 },
   steppers: { flexDirection: 'row', gap: 8, marginTop: 10 },
   notes: { minHeight: 96, color: colors.text, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 12, textAlignVertical: 'top' },

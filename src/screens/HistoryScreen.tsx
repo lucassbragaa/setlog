@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { setVolumeKg } from '../data/setMetrics';
 import { colors } from '../theme';
 import type { WorkoutSession } from '../types/training';
 import { ActionButton, commonStyles, ScreenTitle } from '../ui';
 
 function stats(session: WorkoutSession) {
   const sets = session.exercises.flatMap(exercise => exercise.sets);
-  return { sets: sets.length, volume: sets.reduce((total, set) => total + set.loadKg * set.repetitions, 0) };
+  return { sets: sets.length, volume: sets.reduce((total, set) => total + setVolumeKg(set), 0) };
 }
 
 export function HistoryScreen({ history, onDelete }: { history: WorkoutSession[]; onDelete: (id: string) => void }) {

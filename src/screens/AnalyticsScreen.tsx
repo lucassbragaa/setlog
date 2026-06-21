@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { PROGRAM_SEQUENCE, type ProgramCode } from '../data/cycles';
+import { estimated1Rm, setVolumeKg } from '../data/setMetrics';
 import { colors } from '../theme';
 import type { ExerciseBlock, WorkoutSession } from '../types/training';
 import { Chip, commonStyles, ScreenTitle } from '../ui';
@@ -24,10 +25,10 @@ function statsForSession(session: WorkoutSession): SessionStats {
   const setsWithRir = sets.filter(set => set.rir !== undefined);
   return {
     cycle: session.cycleNumber ?? 0,
-    volume: sets.reduce((total, set) => total + set.loadKg * set.repetitions, 0),
+    volume: sets.reduce((total, set) => total + setVolumeKg(set), 0),
     sets: sets.length,
     averageRir: setsWithRir.length ? setsWithRir.reduce((total, set) => total + (set.rir ?? 0), 0) / setsWithRir.length : 0,
-    bestE1rm: sets.reduce((best, set) => Math.max(best, set.loadKg * (1 + set.repetitions / 30)), 0),
+    bestE1rm: sets.reduce((best, set) => Math.max(best, estimated1Rm(set)), 0),
     session,
   };
 }
@@ -120,10 +121,10 @@ export function AnalyticsScreen({ sessions }: { sessions: WorkoutSession[] }) {
             <Text style={commonStyles.cardTitle}>Exercícios no ciclo {latest.cycle}</Text>
             {latest.session.exercises.map(exercise => {
               const currentSets = workingSets(exercise);
-              const currentVolume = currentSets.reduce((total, set) => total + set.loadKg * set.repetitions, 0);
-              const currentE1rm = currentSets.reduce((best, set) => Math.max(best, set.loadKg * (1 + set.repetitions / 30)), 0);
+              const currentVolume = currentSets.reduce((total, set) => total + setVolumeKg(set), 0);
+              const currentE1rm = currentSets.reduce((best, set) => Math.max(best, estimated1Rm(set)), 0);
               const oldExercise = previousExercises.get(exercise.exerciseName);
-              const oldVolume = oldExercise ? workingSets(oldExercise).reduce((total, set) => total + set.loadKg * set.repetitions, 0) : 0;
+              const oldVolume = oldExercise ? workingSets(oldExercise).reduce((total, set) => total + setVolumeKg(set), 0) : 0;
               return (
                 <View key={exercise.id} style={styles.exerciseRow}>
                   <View style={{ flex: 1 }}>

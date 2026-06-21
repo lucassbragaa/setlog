@@ -20,10 +20,33 @@ export interface Tempo {
   topPauseSeconds?: number;
 }
 
+export interface TechniqueConfig {
+  /** Total de blocos, contando o bloco inicial. */
+  blocks?: number;
+  /** Meta de reps dos blocos depois do primeiro. */
+  secondaryRepRange?: [number, number];
+  /** Pausa curta dentro do mesmo set. */
+  intraSetRestSeconds?: number;
+  /** Redução de carga entre quedas. */
+  loadDropPercent?: number;
+  /** Respirações profundas entre blocos, quando esse é o marcador usado. */
+  breathsBetweenBlocks?: number;
+}
+
 export interface SetPrescription {
   technique: SetType;
   repRange: [number, number];
   rirRange: [number, number];
+  techniqueConfig?: TechniqueConfig;
+}
+
+export interface LoggedTechniqueDetails {
+  /** Reps reais do bloco inicial e dos blocos subsequentes. */
+  segmentRepetitions: number[];
+  intraSetRestSeconds?: number;
+  loadDropPercent?: number;
+  breathsBetweenBlocks?: number;
+  durationSeconds?: number;
 }
 
 export interface LoggedSet {
@@ -43,6 +66,7 @@ export interface LoggedSet {
   partialRepetitions?: number;
   painScore?: number;
   notes?: string;
+  techniqueDetails?: LoggedTechniqueDetails;
 }
 
 export interface ProgramExercise {
