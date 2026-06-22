@@ -1,6 +1,8 @@
 import type { PropsWithChildren } from 'react';
+import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { daysInMonth, isoWithLocalDate, localDateParts } from './data/sessionDates';
 import { colors } from './theme';
 
 export function ActionButton({ label, onPress, tone = 'primary', disabled = false }: {
@@ -69,6 +71,65 @@ export function ModalShell({ visible, title, onClose, children }: PropsWithChild
   );
 }
 
+
+export function DateEditor({ value, onChange, label = 'DATA DO TREINO' }: {
+  value: string;
+  onChange: (iso: string) => void;
+  label?: string;
+}) {
+  const initial = localDateParts(value);
+  const [visible, setVisible] = useState(false);
+  const [day, setDay] = useState(initial.day);
+  const [month, setMonth] = useState(initial.month);
+  const [year, setYear] = useState(initial.year);
+
+  function open() {
+    const current = localDateParts(value);
+    setDay(current.day);
+    setMonth(current.month);
+    setYear(current.year);
+    setVisible(true);
+  }
+
+  function chooseRelativeDate(daysAgo: number) {
+    const date = new Date();
+    date.setDate(date.getDate() - daysAgo);
+    setDay(date.getDate());
+    setMonth(date.getMonth() + 1);
+    setYear(date.getFullYear());
+  }
+
+  function save() {
+    onChange(isoWithLocalDate(value, year, month, day));
+    setVisible(false);
+  }
+
+  return (
+    <>
+      <Pressable style={styles.dateButton} onPress={open}>
+        <View>
+          <Text style={styles.dateLabel}>{label}</Text>
+          <Text style={styles.dateValue}>{new Date(value).toLocaleDateString('pt-BR')}</Text>
+        </View>
+        <Text style={styles.dateEdit}>ALTERAR</Text>
+      </Pressable>
+      <ModalShell visible={visible} title="Alterar data do treino" onClose={() => setVisible(false)}>
+        <Text style={styles.dateHelp}>O horário e os intervalos do treino serão preservados.</Text>
+        <View style={styles.dateShortcuts}>
+          <Chip label="Hoje" onPress={() => chooseRelativeDate(0)} />
+          <Chip label="Ontem" onPress={() => chooseRelativeDate(1)} />
+        </View>
+        <View style={styles.dateSteppers}>
+          <Stepper label="DIA" value={Math.min(day, daysInMonth(year, month))} min={1} max={daysInMonth(year, month)} onChange={setDay} />
+          <Stepper label="MÊS" value={month} min={1} max={12} onChange={setMonth} />
+          <Stepper label="ANO" value={year} min={2000} max={new Date().getFullYear() + 1} onChange={setYear} />
+        </View>
+        <ActionButton label="SALVAR DATA" onPress={save} />
+      </ModalShell>
+    </>
+  );
+}
+
 export const commonStyles = StyleSheet.create({
   screen: { padding: 20, paddingTop: 24, paddingBottom: 125 },
   card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 16, marginTop: 14 },
@@ -104,4 +165,11 @@ const styles = StyleSheet.create({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   modalTitle: { color: colors.text, fontSize: 20, fontWeight: '800' },
   close: { color: colors.muted, fontSize: 30, paddingHorizontal: 8 },
+  dateButton: { minHeight: 58, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, backgroundColor: colors.elevated },
+  dateLabel: { color: colors.muted, fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  dateValue: { color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 4 },
+  dateEdit: { color: colors.accent, fontSize: 9, fontWeight: '800' },
+  dateHelp: { color: colors.muted, fontSize: 11, lineHeight: 16 },
+  dateShortcuts: { flexDirection: 'row', gap: 8, marginTop: 12 },
+  dateSteppers: { flexDirection: 'row', gap: 8, marginTop: 12 },
 });

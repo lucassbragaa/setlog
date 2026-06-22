@@ -4,6 +4,7 @@ import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 import { createDefaultData, mergeDefaultPrograms, sessionFromProgram } from './src/data/appDefaults';
 import { currentCycleNumber, isProgramCode } from './src/data/cycles';
+import { nowOnLocalDate } from './src/data/sessionDates';
 import { chooseBackupFile, exportBackup } from './src/platform/backup';
 import { setupPwa } from './src/platform/pwa';
 import { AnalyticsScreen } from './src/screens/AnalyticsScreen';
@@ -78,7 +79,7 @@ export default function App() {
         ...current.activeSession,
         cycleNumber,
         programId: current.activeSession.programId ?? (isProgramCode(current.activeSession.name) ? 'personalized-' + current.activeSession.name.toLowerCase() : undefined),
-        endedAt: new Date().toISOString(),
+        endedAt: nowOnLocalDate(current.activeSession.startedAt),
       };
       const history = [completed, ...current.history];
       const nextCycle = isProgramCode(completed.name) ? currentCycleNumber(history) : undefined;
@@ -140,7 +141,11 @@ export default function App() {
       )}
       {activeTab === 'Ciclos' && <CyclesScreen history={data.history} onExport={() => exportBackup(data)} onImport={restoreBackup} />}
       {activeTab === 'Histórico' && (
-        <HistoryScreen history={data.history} onDelete={id => setData(current => ({ ...current, history: current.history.filter(session => session.id !== id) }))} />
+        <HistoryScreen
+          history={data.history}
+          onUpdate={updated => setData(current => ({ ...current, history: current.history.map(session => session.id === updated.id ? updated : session) }))}
+          onDelete={id => setData(current => ({ ...current, history: current.history.filter(session => session.id !== id) }))}
+        />
       )}
       {activeTab === 'Análises' && <AnalyticsScreen sessions={data.history} />}
       {activeTab === 'Programas' && (

@@ -1,26 +1,29 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { moveSessionToStartedAt } from '../data/sessionDates';
 import { setVolumeKg } from '../data/setMetrics';
 import { colors } from '../theme';
 import type { WorkoutSession } from '../types/training';
-import { ActionButton, commonStyles, ScreenTitle } from '../ui';
+import { ActionButton, commonStyles, DateEditor, ScreenTitle } from '../ui';
 
 function stats(session: WorkoutSession) {
   const sets = session.exercises.flatMap(exercise => exercise.sets);
   return { sets: sets.length, volume: sets.reduce((total, set) => total + setVolumeKg(set), 0) };
 }
 
-export function HistoryScreen({ history, onDelete }: { history: WorkoutSession[]; onDelete: (id: string) => void }) {
+export function HistoryScreen({ history, onDelete, onUpdate }: { history: WorkoutSession[]; onDelete: (id: string) => void; onUpdate: (session: WorkoutSession) => void }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const sessions = [...history].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
   return (
     <ScrollView contentContainerStyle={commonStyles.screen}>
       <ScreenTitle eyebrow="REGISTRO COMPLETO" title="Histórico" subtitle={history.length + ' sessões salvas automaticamente'} />
-      {history.length === 0 ? <View style={commonStyles.card}><Text style={commonStyles.muted}>Finalize um treino para vê-lo aqui.</Text></View> : history.map(session => {
+      {history.length === 0 ? <View style={commonStyles.card}><Text style={commonStyles.muted}>Finalize um treino para vê-lo aqui.</Text></View> : sessions.map(session => {
         const summary = stats(session);
         const open = selected === session.id;
         return (
-          <Pressable key={session.id} style={commonStyles.card} onPress={() => setSelected(open ? null : session.id)}>
+          <View key={session.id} style={commonStyles.card}>
+            <Pressable onPress={() => setSelected(open ? null : session.id)}>
             <View style={commonStyles.between}>
               <View style={{ flex: 1 }}>
                 <View style={styles.titleRow}>
@@ -32,8 +35,10 @@ export function HistoryScreen({ history, onDelete }: { history: WorkoutSession[]
               <Text style={styles.chevron}>{open ? '⌃' : '⌄'}</Text>
             </View>
             <View style={styles.summary}><Text style={styles.stat}>{summary.sets}<Text style={styles.label}> sets</Text></Text><Text style={styles.stat}>{summary.volume.toLocaleString('pt-BR')}<Text style={styles.label}> kg</Text></Text></View>
+            </Pressable>
             {open && (
               <View style={styles.details}>
+                <DateEditor label="DATA REGISTRADA" value={session.startedAt} onChange={startedAt => onUpdate(moveSessionToStartedAt(session, startedAt))} />
                 {session.exercises.map(exercise => (
                   <View key={exercise.id} style={styles.exercise}>
                     <Text style={styles.exerciseName}>{exercise.exerciseName}</Text>
@@ -44,7 +49,7 @@ export function HistoryScreen({ history, onDelete }: { history: WorkoutSession[]
                 <ActionButton label="Excluir sessão" tone="danger" onPress={() => onDelete(session.id)} />
               </View>
             )}
-          </Pressable>
+          </View>
         );
       })}
     </ScrollView>

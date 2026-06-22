@@ -3,11 +3,12 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 
 import { exerciseLibrary } from '../data/appDefaults';
 import { isProgramCode } from '../data/cycles';
+import { moveSessionToStartedAt, nowOnLocalDate } from '../data/sessionDates';
 import { setVolumeKg } from '../data/setMetrics';
 import { configForTechnique, prescriptionSummary, prescriptionsFor, techniqueLabel, techniqueOptions, techniqueProfile } from '../data/techniques';
 import { colors } from '../theme';
 import type { ExerciseBlock, LoggedSet, ProgramTemplate, RangeOfMotion, SetPrescription, SetType, TechniqueConfig, WorkoutSession } from '../types/training';
-import { ActionButton, Chip, commonStyles, ModalShell, ScreenTitle, Stepper } from '../ui';
+import { ActionButton, Chip, commonStyles, DateEditor, ModalShell, ScreenTitle, Stepper } from '../ui';
 
 function formatTimer(seconds: number) {
   return Math.floor(seconds / 60).toString().padStart(2, '0') + ':' + (seconds % 60).toString().padStart(2, '0');
@@ -94,8 +95,9 @@ function TechniqueExecutionInputs({ type, config, segments, durationSeconds, onC
 }
 
 
-function ExerciseCard({ block, index, onChange, onRemove }: {
+function ExerciseCard({ block, index, sessionStartedAt, onChange, onRemove }: {
   block: ExerciseBlock;
+  sessionStartedAt: string;
   index: number;
   onChange: (block: ExerciseBlock) => void;
   onRemove: () => void;
@@ -145,7 +147,7 @@ function ExerciseCard({ block, index, onChange, onRemove }: {
       loadKg: weight,
       repetitions: totalRepetitions,
       rir,
-      completedAt: new Date().toISOString(),
+      completedAt: nowOnLocalDate(sessionStartedAt),
       rangeOfMotion: rom,
       techniqueQuality: quality as 1 | 2 | 3 | 4 | 5,
       painScore: pain,
@@ -341,6 +343,7 @@ export function WorkoutScreen({ session, programs, saveStatus, onChange, onFinis
           <View style={styles.live}><View style={styles.dot} /><Text style={styles.liveText}>LIVE</Text></View>
         </View>
         <Text style={[styles.save, saveStatus === 'error' && { color: colors.danger }]}>{saveStatus === 'saved' ? '● Salvo neste dispositivo' : saveStatus === 'error' ? 'Falha ao salvar' : 'Salvando…'}</Text>
+        <DateEditor value={session.startedAt} onChange={startedAt => onChange(moveSessionToStartedAt(session, startedAt))} />
 
         <View style={styles.metrics}>
           <View><Text style={styles.metricValue}>{totalSets}</Text><Text style={styles.metricLabel}>SETS</Text></View>
@@ -360,7 +363,7 @@ export function WorkoutScreen({ session, programs, saveStatus, onChange, onFinis
         ) : null}
 
         {session.exercises.map((block, index) => (
-          <ExerciseCard key={block.id} block={block} index={index} onChange={next => updateBlock(block.id, next)} onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })} />
+          <ExerciseCard key={block.id} block={block} index={index} sessionStartedAt={session.startedAt} onChange={next => updateBlock(block.id, next)} onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })} />
         ))}
         <ActionButton label="+ ADICIONAR EXERCÍCIO" tone="secondary" onPress={() => setAddOpen(true)} />
         <ActionButton label="Finalizar treino" tone="danger" disabled={totalSets === 0} onPress={() => setFinishOpen(true)} />
