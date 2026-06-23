@@ -329,12 +329,24 @@ export function WorkoutScreen({ session, programs, saveStatus, onChange, onFinis
             <View><Text style={styles.selectorLabel}>TREINO DE HOJE</Text><Text style={styles.selectorTitle}>Escolha A1–B4</Text></View>
             {session.cycleNumber ? <View style={styles.cycleBadge}><Text style={styles.cycleText}>CICLO {session.cycleNumber}</Text></View> : null}
           </View>
-          <View style={styles.programChoices}>
-            {workoutPrograms.map(program => (
-              <Pressable key={program.id} style={[styles.programChoice, session.name === program.name && styles.programChoiceSelected]} onPress={() => requestProgram(program)}>
-                <Text style={[styles.programChoiceText, session.name === program.name && styles.programChoiceTextSelected]}>{program.name}</Text>
-              </Pressable>
-            ))}
+          <View style={styles.programCards}>
+            {workoutPrograms.map(program => {
+              const selected = session.programId === program.id || session.name === program.name;
+              const splitLabel = program.split ?? (program.name.startsWith('B') ? 'Lower' : 'Upper');
+              return (
+                <Pressable key={program.id} style={[styles.programCard, selected && styles.programCardSelected]} onPress={() => requestProgram(program)}>
+                  <View style={styles.programCardTop}>
+                    <Text style={[styles.programCardCode, selected && styles.programCardCodeSelected]}>{program.name}</Text>
+                    <View style={[styles.programSplitBadge, splitLabel === 'Lower' && styles.programSplitBadgeLower, selected && styles.programSplitBadgeSelected]}>
+                      <Text style={[styles.programSplitText, selected && styles.programSplitTextSelected]}>{splitLabel}</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.programCardDetail, selected && styles.programCardDetailSelected]}>{program.exercises.length} exercicios</Text>
+                  <Text numberOfLines={1} style={[styles.programCardDescription, selected && styles.programCardDescriptionSelected]}>{program.description || 'Treino personalizado'}</Text>
+                  {selected ? <Text style={styles.programCardActive}>ATIVO</Text> : null}
+                </Pressable>
+              );
+            })}
           </View>
         </View>
 
@@ -396,11 +408,22 @@ const styles = StyleSheet.create({
   selectorTitle: { color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 3 },
   cycleBadge: { backgroundColor: colors.accentSoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
   cycleText: { color: colors.accent, fontSize: 8, fontWeight: '800' },
-  programChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 12 },
-  programChoice: { width: '22.5%', borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingVertical: 9, alignItems: 'center' },
-  programChoiceSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
-  programChoiceText: { color: colors.muted, fontSize: 11, fontWeight: '800' },
-  programChoiceTextSelected: { color: colors.background },
+  programCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 },
+  programCard: { width: '48.4%', minHeight: 92, borderColor: colors.border, borderWidth: 1, borderRadius: 14, padding: 11, backgroundColor: colors.elevated },
+  programCardSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  programCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  programCardCode: { color: colors.text, fontSize: 20, fontWeight: '900' },
+  programCardCodeSelected: { color: colors.background },
+  programSplitBadge: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: '#163A35' },
+  programSplitBadgeLower: { backgroundColor: '#332A18' },
+  programSplitBadgeSelected: { backgroundColor: '#0B1110' },
+  programSplitText: { color: colors.accent, fontSize: 8, fontWeight: '900', textTransform: 'uppercase' },
+  programSplitTextSelected: { color: colors.text },
+  programCardDetail: { color: colors.muted, fontSize: 11, fontWeight: '800', marginTop: 10 },
+  programCardDetailSelected: { color: colors.background },
+  programCardDescription: { color: colors.textDim, fontSize: 9, marginTop: 4 },
+  programCardDescriptionSelected: { color: '#16302A' },
+  programCardActive: { color: colors.background, fontSize: 8, fontWeight: '900', marginTop: 8, letterSpacing: 1 },
   exerciseCard: { ...commonStyles.card, padding: 15 },
   exerciseHeader: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   number: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.accentSoft, justifyContent: 'center', alignItems: 'center' },
