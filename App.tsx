@@ -108,6 +108,20 @@ export default function App() {
     }));
   }
 
+  function createBlankProgram() {
+    const now = Date.now();
+    setData(current => ({
+      ...current,
+      programs: [...current.programs, {
+        id: 'custom-' + now,
+        name: 'Novo treino ' + (current.programs.filter(item => item.id.startsWith('custom-')).length + 1),
+        description: 'Treino criado manualmente',
+        exercises: [],
+      }],
+    }));
+    setActiveTab('Programas');
+  }
+
   async function restoreBackup() {
     const restored = await chooseBackupFile();
     if (restored) setData({ ...restored, programs: mergeDefaultPrograms(restored.programs) });
@@ -154,6 +168,7 @@ export default function App() {
           onStart={startProgram}
           onDuplicate={duplicateProgram}
           onCreate={createProgramFromWorkout}
+          onCreateBlank={createBlankProgram}
           onUpdate={program => setData(current => ({ ...current, programs: current.programs.map(item => item.id === program.id ? program : item) }))}
           onDelete={id => setData(current => ({ ...current, programs: current.programs.filter(program => program.id !== id) }))}
         />
