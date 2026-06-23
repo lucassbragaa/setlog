@@ -185,18 +185,28 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
               ) : item.exercises.map((exercise, index) => {
                 const sets = prescriptionsFor(exercise);
                 return (
-                  <Pressable key={exercise.exerciseId + index} style={styles.exerciseRow} onPress={() => setEditor({ programId: item.id, exerciseIndex: index })}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.exerciseName}>{index + 1}. {exercise.exerciseName}</Text>
-                      <Text style={[styles.exercisePrescription, sets.length === 0 && styles.undefined]}>
-                        {sets.length === 0
-                          ? 'Sem prescrição · toque para configurar'
-                          : sets.map((set, setIndex) => `${setIndex + 1} ${techniqueLabel(set.technique)} · ${prescriptionSummary(set)} · RIR ${set.rirRange[0]}–${set.rirRange[1]}`).join('  |  ')}
-                      </Text>
-                      {exercise.notes ? <Text style={styles.notePreview}>Obs.: {exercise.notes}</Text> : null}
+                  <View key={exercise.exerciseId + index} style={styles.exerciseRow}>
+                    <Pressable style={styles.exerciseMain} onPress={() => setEditor({ programId: item.id, exerciseIndex: index })}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.exerciseName}>{index + 1}. {exercise.exerciseName}</Text>
+                        <Text style={[styles.exercisePrescription, sets.length === 0 && styles.undefined]}>
+                          {sets.length === 0
+                            ? 'Sem prescricao - toque para configurar'
+                            : sets.map((set, setIndex) => String(setIndex + 1) + ' ' + techniqueLabel(set.technique) + ' - ' + prescriptionSummary(set) + ' - RIR ' + set.rirRange[0] + '-' + set.rirRange[1]).join('  |  ')}
+                        </Text>
+                        {exercise.notes ? <Text style={styles.notePreview}>Obs.: {exercise.notes}</Text> : null}
+                      </View>
+                      <Text style={styles.edit}>SETS</Text>
+                    </Pressable>
+                    <View style={styles.reorderControls}>
+                      <Pressable disabled={index === 0} style={[styles.reorderButton, index === 0 && styles.reorderButtonDisabled]} onPress={() => moveExercise(item, index, index - 1)}>
+                        <Text style={[styles.reorderText, index === 0 && styles.reorderTextDisabled]}>UP</Text>
+                      </Pressable>
+                      <Pressable disabled={index === item.exercises.length - 1} style={[styles.reorderButton, index === item.exercises.length - 1 && styles.reorderButtonDisabled]} onPress={() => moveExercise(item, index, index + 1)}>
+                        <Text style={[styles.reorderText, index === item.exercises.length - 1 && styles.reorderTextDisabled]}>DN</Text>
+                      </Pressable>
                     </View>
-                    <Text style={styles.edit}>SETS</Text>
-                  </Pressable>
+                  </View>
                 );
               })}
             </View>
@@ -304,7 +314,13 @@ const styles = StyleSheet.create({
   badgeText: { color: colors.accent, fontWeight: '800' },
   list: { marginTop: 12, backgroundColor: colors.elevated, borderRadius: 10, paddingHorizontal: 10 },
   emptyProgram: { paddingVertical: 16, alignItems: 'center' },
-  exerciseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border },
+  exerciseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border },
+  exerciseMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  reorderControls: { flexDirection: 'row', gap: 5 },
+  reorderButton: { width: 36, height: 31, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  reorderButtonDisabled: { opacity: 0.35 },
+  reorderText: { color: colors.accent, fontSize: 10, fontWeight: '900' },
+  reorderTextDisabled: { color: colors.textDim },
   exerciseName: { color: colors.text, fontSize: 12, fontWeight: '700' },
   exercisePrescription: { color: colors.muted, fontSize: 10, lineHeight: 15, marginTop: 3 },
   undefined: { color: colors.textDim, fontSize: 10 },
