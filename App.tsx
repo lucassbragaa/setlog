@@ -14,7 +14,7 @@ import { ProgramsScreen } from './src/screens/ProgramsScreen';
 import { WorkoutScreen } from './src/screens/WorkoutScreen';
 import { loadAppData, loadLegacySets, saveAppData } from './src/storage/workoutStorage';
 import { colors } from './src/theme';
-import type { AppData, ProgramTemplate, WorkoutSession } from './src/types/training';
+import type { AppData, ExerciseBlock, ProgramTemplate, WorkoutSession } from './src/types/training';
 
 const tabs = ['Treino', 'Ciclos', 'Histórico', 'Análises', 'Programas'] as const;
 type Tab = typeof tabs[number];
@@ -32,6 +32,43 @@ function emptyContinuation(session: WorkoutSession, cycleNumber?: number): Worko
       id: 'block-' + now + '-' + index,
       sets: [],
     })),
+  };
+}
+
+function programMatchesSession(session: WorkoutSession, program: ProgramTemplate): boolean {
+  return session.programId === program.id
+    || session.name === program.name
+    || (!session.programId && isProgramCode(session.name) && program.id === 'personalized-' + session.name.toLowerCase());
+}
+
+function syncActiveSessionWithProgram(
+  session: WorkoutSession,
+  previousProgram: ProgramTemplate | undefined,
+  nextProgram: ProgramTemplate,
+): WorkoutSession {
+  if (!previousProgram || !programMatchesSession(session, previousProgram)) return session;
+  const usedBlockIds = new Set<string>();
+  const blocksByExerciseId = new Map(session.exercises.map(block => [block.exerciseId, block]));
+  const now = Date.now();
+
+  const exercises = nextProgram.exercises.map((exercise, index): ExerciseBlock => {
+    const previousExerciseAtIndex = previousProgram.exercises[index];
+    const matched = blocksByExerciseId.get(exercise.exerciseId)
+      ?? (previousExerciseAtIndex ? blocksByExerciseId.get(previousExerciseAtIndex.exerciseId) : undefined);
+    if (matched) usedBlockIds.add(matched.id);
+    return {
+      ...exercise,
+      id: matched?.id ?? 'block-' + now + '-' + index,
+      sets: matched?.sets ?? [],
+    };
+  });
+
+  const unsyncedLoggedBlocks = session.exercises.filter(block => !usedBlockIds.has(block.id) && block.sets.length > 0);
+  return {
+    ...session,
+    name: nextProgram.name,
+    programId: nextProgram.id,
+    exercises: [...exercises, ...unsyncedLoggedBlocks],
   };
 }
 
@@ -169,7 +206,14 @@ export default function App() {
           onDuplicate={duplicateProgram}
           onCreate={createProgramFromWorkout}
           onCreateBlank={createBlankProgram}
-          onUpdate={program => setData(current => ({ ...current, programs: current.programs.map(item => item.id === program.id ? program : item) }))}
+          onUpdate={program => setData(current => {
+            const previousProgram = current.programs.find(item => item.id === program.id);
+            return {
+              ...current,
+              programs: current.programs.map(item => item.id === program.id ? program : item),
+              activeSession: syncActiveSessionWithProgram(current.activeSession, previousProgram, program),
+            };
+          })}
           onDelete={id => setData(current => ({ ...current, programs: current.programs.filter(program => program.id !== id) }))}
         />
       )}

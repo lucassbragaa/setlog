@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { exerciseLibrary } from '../data/appDefaults';
@@ -106,6 +106,8 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [programEditor, setProgramEditor] = useState<ProgramEditorTarget | null>(null);
   const [newExerciseName, setNewExerciseName] = useState('');
+  const [movingExercise, setMovingExercise] = useState<EditorTarget | null>(null);
+  const longPressReorderRef = useRef(false);
   const program = editor ? programs.find(item => item.id === editor.programId) : undefined;
   const editedExercise = program && editor ? program.exercises[editor.exerciseIndex] : undefined;
   const editedProgram = programEditor ? programs.find(item => item.id === programEditor.programId) : undefined;
@@ -129,6 +131,18 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
     const [moved] = exercises.splice(from, 1);
     exercises.splice(to, 0, moved);
     updateProgram({ ...program, exercises });
+  }
+
+  function placeMovingExercise(program: ProgramTemplate, targetIndex: number) {
+    if (!movingExercise || movingExercise.programId !== program.id) return false;
+    if (movingExercise.exerciseIndex !== targetIndex) moveExercise(program, movingExercise.exerciseIndex, targetIndex);
+    setMovingExercise(null);
+    return true;
+  }
+
+  function openExerciseEditor(programId: string, exerciseIndex: number) {
+    setMovingExercise(null);
+    setEditor({ programId, exerciseIndex });
   }
 
   function updateExercise(next: ProgramExercise) {
@@ -184,32 +198,39 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
                 <View style={styles.emptyProgram}><Text style={styles.undefined}>Nenhum exercício neste treino.</Text></View>
               ) : item.exercises.map((exercise, index) => {
                 const sets = prescriptionsFor(exercise);
+                const isMoving = movingExercise?.programId === item.id && movingExercise.exerciseIndex === index;
+                const sameProgramMoving = movingExercise?.programId === item.id;
                 return (
-                  <View key={exercise.exerciseId + index} style={styles.exerciseRow}>
-                    <Pressable style={styles.exerciseMain} onPress={() => setEditor({ programId: item.id, exerciseIndex: index })}>
-                      <View style={{ flex: 1 }}>
+                  <Pressable
+                    key={exercise.exerciseId + index}
+                    style={[styles.exerciseRow, isMoving && styles.exerciseRowMoving, sameProgramMoving && !isMoving && styles.exerciseDropTarget]}
+                    onLongPress={() => { longPressReorderRef.current = true; setMovingExercise({ programId: item.id, exerciseIndex: index }); }}
+                    delayLongPress={220}
+                    onPress={() => {
+                      if (longPressReorderRef.current) { longPressReorderRef.current = false; return; }
+                      if (placeMovingExercise(item, index)) return;
+                      openExerciseEditor(item.id, index);
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.exerciseTitleRow}>
                         <Text style={styles.exerciseName}>{index + 1}. {exercise.exerciseName}</Text>
-                        <Text style={[styles.exercisePrescription, sets.length === 0 && styles.undefined]}>
-                          {sets.length === 0
-                            ? 'Sem prescricao - toque para configurar'
-                            : sets.map((set, setIndex) => String(setIndex + 1) + ' ' + techniqueLabel(set.technique) + ' - ' + prescriptionSummary(set) + ' - RIR ' + set.rirRange[0] + '-' + set.rirRange[1]).join('  |  ')}
-                        </Text>
-                        {exercise.notes ? <Text style={styles.notePreview}>Obs.: {exercise.notes}</Text> : null}
+                        {isMoving ? <Text style={styles.movingBadge}>MOVENDO</Text> : null}
                       </View>
-                      <Text style={styles.edit}>SETS</Text>
-                    </Pressable>
-                    <View style={styles.reorderControls}>
-                      <Pressable disabled={index === 0} style={[styles.reorderButton, index === 0 && styles.reorderButtonDisabled]} onPress={() => moveExercise(item, index, index - 1)}>
-                        <Text style={[styles.reorderText, index === 0 && styles.reorderTextDisabled]}>UP</Text>
-                      </Pressable>
-                      <Pressable disabled={index === item.exercises.length - 1} style={[styles.reorderButton, index === item.exercises.length - 1 && styles.reorderButtonDisabled]} onPress={() => moveExercise(item, index, index + 1)}>
-                        <Text style={[styles.reorderText, index === item.exercises.length - 1 && styles.reorderTextDisabled]}>DN</Text>
-                      </Pressable>
+                      <Text style={[styles.exercisePrescription, sets.length === 0 && styles.undefined]}>
+                        {sets.length === 0
+                          ? 'Sem prescricao - toque para configurar'
+                          : sets.map((set, setIndex) => String(setIndex + 1) + ' ' + techniqueLabel(set.technique) + ' - ' + prescriptionSummary(set) + ' - RIR ' + set.rirRange[0] + '-' + set.rirRange[1]).join('  |  ')}
+                      </Text>
+                      {exercise.notes ? <Text style={styles.notePreview}>Obs.: {exercise.notes}</Text> : null}
+                      {sameProgramMoving && !isMoving ? <Text style={styles.dropHint}>Toque aqui para mover para esta posicao</Text> : null}
                     </View>
-                  </View>
+                    <Text style={styles.edit}>{sameProgramMoving ? 'AQUI' : 'SETS'}</Text>
+                  </Pressable>
                 );
               })}
             </View>
+            {movingExercise?.programId === item.id ? <ActionButton label="CANCELAR REORDENACAO" tone="secondary" onPress={() => setMovingExercise(null)} /> : null}
             <ActionButton label="INICIAR ESTE TREINO" onPress={() => onStart(item)} />
             <View style={styles.actions}>
               <View style={{ flex: 1 }}><ActionButton label="Editar treino" tone="secondary" onPress={() => setProgramEditor({ programId: item.id })} /></View>
@@ -314,13 +335,12 @@ const styles = StyleSheet.create({
   badgeText: { color: colors.accent, fontWeight: '800' },
   list: { marginTop: 12, backgroundColor: colors.elevated, borderRadius: 10, paddingHorizontal: 10 },
   emptyProgram: { paddingVertical: 16, alignItems: 'center' },
-  exerciseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: colors.border },
-  exerciseMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  reorderControls: { flexDirection: 'row', gap: 5 },
-  reorderButton: { width: 36, height: 31, borderRadius: 9, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
-  reorderButtonDisabled: { opacity: 0.35 },
-  reorderText: { color: colors.accent, fontSize: 10, fontWeight: '900' },
-  reorderTextDisabled: { color: colors.textDim },
+  exerciseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.border },
+  exerciseRowMoving: { backgroundColor: colors.accentSoft, borderRadius: 10, paddingHorizontal: 8, borderBottomColor: 'transparent' },
+  exerciseDropTarget: { borderColor: colors.accentBorder, borderWidth: 1, borderRadius: 10, paddingHorizontal: 8, marginVertical: 3 },
+  exerciseTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
+  movingBadge: { color: colors.background, backgroundColor: colors.accent, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 2, fontSize: 8, fontWeight: '900' },
+  dropHint: { color: colors.accent, fontSize: 9, fontWeight: '800', marginTop: 4 },
   exerciseName: { color: colors.text, fontSize: 12, fontWeight: '700' },
   exercisePrescription: { color: colors.muted, fontSize: 10, lineHeight: 15, marginTop: 3 },
   undefined: { color: colors.textDim, fontSize: 10 },
