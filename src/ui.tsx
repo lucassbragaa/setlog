@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { daysInMonth, isoWithLocalDate, localDateParts } from './data/sessionDates';
-import { colors } from './theme';
+import { colors, radius, type } from './theme';
 
 export function ActionButton({ label, onPress, tone = 'primary', disabled = false }: {
   label: string;
@@ -15,7 +15,14 @@ export function ActionButton({ label, onPress, tone = 'primary', disabled = fals
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={[styles.button, tone === 'primary' && styles.primary, tone === 'danger' && styles.danger, disabled && styles.disabled]}
+      style={({ pressed }) => [
+        styles.button,
+        tone === 'primary' && styles.primary,
+        tone === 'secondary' && styles.secondary,
+        tone === 'danger' && styles.danger,
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
+      ]}
     >
       <Text style={[styles.buttonText, tone === 'primary' && styles.primaryText, tone === 'danger' && styles.dangerText]}>{label}</Text>
     </Pressable>
@@ -37,9 +44,13 @@ export function Stepper({ label, value, suffix = '', step = 1, min = 0, max = 99
     <View style={styles.stepper}>
       <Text style={styles.stepLabel}>{label}</Text>
       <View style={styles.stepRow}>
-        <Pressable onPress={() => onChange(Math.max(min, value - step))}><Text style={styles.stepAction}>−</Text></Pressable>
+        <Pressable style={styles.stepBtn} onPress={() => onChange(Math.max(min, value - step))}>
+          <Text style={styles.stepAction}>−</Text>
+        </Pressable>
         <Text style={styles.stepValue}>{value}{suffix}</Text>
-        <Pressable onPress={() => onChange(Math.min(max, value + step))}><Text style={styles.stepAction}>+</Text></Pressable>
+        <Pressable style={styles.stepBtn} onPress={() => onChange(Math.min(max, value + step))}>
+          <Text style={styles.stepAction}>+</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -57,12 +68,16 @@ export function ScreenTitle({ eyebrow, title, subtitle }: { eyebrow: string; tit
 
 export function ModalShell({ visible, title, onClose, children }: PropsWithChildren<{ visible: boolean; title: string; onClose: () => void }>) {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
+        <Pressable style={styles.backdropDismiss} onPress={onClose} />
         <View style={styles.modal}>
+          <View style={styles.dragHandle} />
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
-            <Pressable onPress={onClose}><Text style={styles.close}>×</Text></Pressable>
+            <Pressable onPress={onClose} style={styles.closeBtn}>
+              <Text style={styles.close}>×</Text>
+            </Pressable>
           </View>
           {children}
         </View>
@@ -70,7 +85,6 @@ export function ModalShell({ visible, title, onClose, children }: PropsWithChild
     </Modal>
   );
 }
-
 
 export function DateEditor({ value, onChange, label = 'DATA DO TREINO' }: {
   value: string;
@@ -131,45 +145,67 @@ export function DateEditor({ value, onChange, label = 'DATA DO TREINO' }: {
 }
 
 export const commonStyles = StyleSheet.create({
-  screen: { padding: 20, paddingTop: 24, paddingBottom: 125 },
-  card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 16, marginTop: 14 },
-  cardTitle: { color: colors.text, fontWeight: '800', fontSize: 17 },
-  muted: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+  screen: { padding: 20, paddingTop: 24, paddingBottom: 130 },
+  card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 16, marginTop: 14 },
+  cardTitle: { color: colors.text, fontWeight: '800', fontSize: type.lg },
+  muted: { color: colors.muted, fontSize: type.md, lineHeight: 20 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
 });
 
 const styles = StyleSheet.create({
-  button: { borderWidth: 1, borderColor: colors.border, borderRadius: 11, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', marginTop: 10 },
+  button: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    marginTop: 10,
+    backgroundColor: colors.elevated,
+  },
+  secondary: { backgroundColor: colors.elevated, borderColor: colors.border },
   primary: { backgroundColor: colors.accent, borderColor: colors.accent },
-  danger: { borderColor: '#6F3232', backgroundColor: '#261515' },
-  disabled: { opacity: 0.4 },
-  buttonText: { color: colors.text, fontSize: 12, fontWeight: '800' },
+  danger: { borderColor: colors.dangerBorder, backgroundColor: colors.dangerSoft },
+  disabled: { opacity: 0.35 },
+  pressed: { opacity: 0.75 },
+  buttonText: { color: colors.text, fontSize: type.sm, fontWeight: '800', letterSpacing: 0.3 },
   primaryText: { color: colors.background },
   dangerText: { color: colors.danger },
-  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: 18, paddingHorizontal: 11, paddingVertical: 7 },
+  chip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    backgroundColor: colors.elevated,
+  },
   chipSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  chipText: { color: colors.muted, fontSize: 11, fontWeight: '600' },
-  chipTextSelected: { color: colors.accent },
-  stepper: { flex: 1, backgroundColor: colors.elevated, borderRadius: 10, padding: 9 },
-  stepLabel: { color: colors.muted, fontSize: 8, fontWeight: '700', textAlign: 'center' },
-  stepRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 7 },
-  stepAction: { color: colors.muted, fontSize: 20, paddingHorizontal: 5 },
-  stepValue: { color: colors.text, fontWeight: '800', fontSize: 14 },
+  chipText: { color: colors.muted, fontSize: type.sm, fontWeight: '600' },
+  chipTextSelected: { color: colors.accent, fontWeight: '700' },
+  stepper: { flex: 1, backgroundColor: colors.elevated, borderRadius: radius.md, padding: 10, borderWidth: 1, borderColor: colors.border },
+  stepLabel: { color: colors.muted, fontSize: 8, fontWeight: '700', textAlign: 'center', letterSpacing: 0.5 },
+  stepRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  stepBtn: { padding: 2 },
+  stepAction: { color: colors.accent, fontSize: 20, paddingHorizontal: 4, fontWeight: '300' },
+  stepValue: { color: colors.text, fontWeight: '800', fontSize: type.lg },
   titleBlock: { marginBottom: 8 },
-  eyebrow: { color: colors.accent, fontSize: 11, fontWeight: '800', letterSpacing: 1.4, marginBottom: 6 },
-  title: { color: colors.text, fontSize: 29, lineHeight: 34, fontWeight: '800' },
-  subtitle: { color: colors.muted, marginTop: 5, fontSize: 14 },
-  backdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
-  modal: { maxHeight: '82%', backgroundColor: colors.card, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, borderColor: colors.border, borderWidth: 1 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  modalTitle: { color: colors.text, fontSize: 20, fontWeight: '800' },
-  close: { color: colors.muted, fontSize: 30, paddingHorizontal: 8 },
-  dateButton: { minHeight: 58, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, backgroundColor: colors.elevated },
+  eyebrow: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1.6, marginBottom: 6, textTransform: 'uppercase' },
+  title: { color: colors.text, fontSize: type.xxl, lineHeight: 32, fontWeight: '800' },
+  subtitle: { color: colors.muted, marginTop: 5, fontSize: type.md, lineHeight: 20 },
+  backdrop: { flex: 1, backgroundColor: '#000000BB', justifyContent: 'flex-end' },
+  backdropDismiss: { flex: 1 },
+  modal: { maxHeight: '85%', backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 20, paddingTop: 12, borderColor: colors.border, borderWidth: 1, borderBottomWidth: 0 },
+  dragHandle: { width: 36, height: 4, backgroundColor: colors.border, borderRadius: radius.full, alignSelf: 'center', marginBottom: 14 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  modalTitle: { color: colors.text, fontSize: type.xl, fontWeight: '800' },
+  closeBtn: { width: 32, height: 32, borderRadius: radius.full, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center' },
+  close: { color: colors.muted, fontSize: 22, lineHeight: 24 },
+  dateButton: { minHeight: 58, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, backgroundColor: colors.elevated },
   dateLabel: { color: colors.muted, fontSize: 8, fontWeight: '800', letterSpacing: 1 },
-  dateValue: { color: colors.text, fontSize: 16, fontWeight: '800', marginTop: 4 },
-  dateEdit: { color: colors.accent, fontSize: 9, fontWeight: '800' },
-  dateHelp: { color: colors.muted, fontSize: 11, lineHeight: 16 },
+  dateValue: { color: colors.text, fontSize: type.lg, fontWeight: '800', marginTop: 4 },
+  dateEdit: { color: colors.accent, fontSize: type.xs, fontWeight: '800', letterSpacing: 0.5 },
+  dateHelp: { color: colors.muted, fontSize: type.sm, lineHeight: 17 },
   dateShortcuts: { flexDirection: 'row', gap: 8, marginTop: 12 },
   dateSteppers: { flexDirection: 'row', gap: 8, marginTop: 12 },
 });

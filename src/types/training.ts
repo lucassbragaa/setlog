@@ -108,3 +108,41 @@ export interface AppData {
   history: WorkoutSession[];
   programs: ProgramTemplate[];
 }
+
+export type Timeframe = '1m' | '3m' | '6m' | '1y' | 'all';
+
+export interface ExercisePR {
+  exerciseKey: string;
+  exerciseName: string;
+  bestE1rm: number;
+  bestWeight: number;
+  bestVolume: number;
+  achievedAt: string;
+}
+
+export interface SeriesPoint {
+  date: string;
+  value: number;
+  label: string;
+}
+
+export interface CalendarDay {
+  date: string;
+  hasWorkout: boolean;
+  sessionCount: number;
+  totalVolume: number;
+}
+
+export interface StreakInfo {
+  currentStreak: number;
+  longestStreak: number;
+  lastWorkoutDate: string | null;
+}
+
+export interface WeeklyVolumeSummary {
+  weekStart: string;
+  weekLabel: string;
+  totalVolume: number;
+  sessionCount: number;
+  setCount: number;
+}

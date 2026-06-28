@@ -13,7 +13,7 @@ import { HistoryScreen } from './src/screens/HistoryScreen';
 import { ProgramsScreen } from './src/screens/ProgramsScreen';
 import { WorkoutScreen } from './src/screens/WorkoutScreen';
 import { loadAppData, loadLegacySets, saveAppData } from './src/storage/workoutStorage';
-import { colors } from './src/theme';
+import { colors, radius, type as typeScale } from './src/theme';
 import type { AppData, ExerciseBlock, ProgramTemplate, WorkoutSession } from './src/types/training';
 
 const tabs = ['Treino', 'Ciclos', 'Histórico', 'Análises', 'Programas'] as const;
@@ -184,6 +184,7 @@ export default function App() {
         <WorkoutScreen
           session={data.activeSession}
           programs={data.programs}
+          history={data.history}
           saveStatus={saveStatus}
           onChange={session => setData(current => ({ ...current, activeSession: session }))}
           onFinish={finishWorkout}
@@ -218,12 +219,18 @@ export default function App() {
         />
       )}
       <View style={styles.tabBar}>
-        {tabs.map((tab, index) => (
-          <Pressable key={tab} style={styles.tab} onPress={() => setActiveTab(tab)}>
-            <Text style={[styles.tabIcon, activeTab === tab && styles.active]}>{['●', '◫', '▤', '⌁', '◇'][index]}</Text>
-            <Text style={[styles.tabText, activeTab === tab && styles.active]}>{tab}</Text>
-          </Pressable>
-        ))}
+        {tabs.map((tab, index) => {
+          const isActive = activeTab === tab;
+          const icons = ['⊕', '↻', '≡', '▲', '◈'];
+          return (
+            <Pressable key={tab} style={styles.tab} onPress={() => setActiveTab(tab)}>
+              <View style={[styles.tabIconWrap, isActive && styles.tabIconWrapActive]}>
+                <Text style={[styles.tabIcon, isActive && styles.tabIconActive]}>{icons[index]}</Text>
+              </View>
+              <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab}</Text>
+            </Pressable>
+          );
+        })}
       </View>
     </SafeAreaView>
   );
@@ -231,9 +238,19 @@ export default function App() {
 
 const styles = StyleSheet.create({
   app: { flex: 1, backgroundColor: colors.background },
-  tabBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 78, backgroundColor: '#0C1014F5', borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', paddingTop: 11, paddingBottom: 15 },
-  tab: { flex: 1, alignItems: 'center', gap: 5 },
-  tabIcon: { color: colors.muted, fontSize: 16 },
-  tabText: { color: colors.muted, fontSize: 8, fontWeight: '600' },
-  active: { color: colors.accent },
+  tabBar: {
+    position: 'absolute', left: 0, right: 0, bottom: 0,
+    minHeight: 80,
+    backgroundColor: colors.card,
+    borderTopWidth: 1, borderTopColor: colors.border,
+    flexDirection: 'row',
+    paddingTop: 10, paddingBottom: 18,
+  },
+  tab: { flex: 1, alignItems: 'center', gap: 4 },
+  tabIconWrap: { width: 36, height: 28, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
+  tabIconWrapActive: { backgroundColor: colors.accentSoft },
+  tabIcon: { color: colors.muted, fontSize: 15 },
+  tabIconActive: { color: colors.accent },
+  tabText: { color: colors.textDim, fontSize: 8, fontWeight: '600' },
+  tabTextActive: { color: colors.accent, fontWeight: '700' },
 });

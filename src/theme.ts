@@ -11,4 +11,25 @@ export const colors = {
   accentBorder: '#28563F',
   success: '#60D394',
   danger: '#FF6B6B',
+  dangerSoft: '#261515',
+  dangerBorder: '#6F3232',
+  upperBadge: '#163A35',
+  lowerBadge: '#332A18',
+} as const;
+
+export const radius = {
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  full: 999,
+} as const;
+
+export const type = {
+  xs: 9,
+  sm: 11,
+  md: 13,
+  lg: 16,
+  xl: 20,
+  xxl: 26,
 } as const;
