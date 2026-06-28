@@ -184,6 +184,7 @@ export default function App() {
         <WorkoutScreen
           session={data.activeSession}
           programs={data.programs}
+          history={data.history}
           saveStatus={saveStatus}
           onChange={session => setData(current => ({ ...current, activeSession: session }))}
           onFinish={finishWorkout}

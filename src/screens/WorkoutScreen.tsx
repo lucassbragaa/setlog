@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { PRBadge } from '../components/PRBadge';
 import { exerciseLibrary } from '../data/appDefaults';
+import { lastSessionSetsForExercise, normalizeExerciseKey } from '../data/analytics';
 import { isProgramCode } from '../data/cycles';
 import { moveSessionToStartedAt, nowOnLocalDate } from '../data/sessionDates';
-import { setVolumeKg } from '../data/setMetrics';
+import { estimated1Rm, setVolumeKg } from '../data/setMetrics';
 import { configForTechnique, prescriptionSummary, prescriptionsFor, techniqueLabel, techniqueOptions, techniqueProfile } from '../data/techniques';
 import { colors } from '../theme';
 import type { ExerciseBlock, LoggedSet, ProgramTemplate, RangeOfMotion, SetPrescription, SetType, TechniqueConfig, WorkoutSession } from '../types/training';
@@ -95,10 +97,12 @@ function TechniqueExecutionInputs({ type, config, segments, durationSeconds, onC
 }
 
 
-function ExerciseCard({ block, index, sessionStartedAt, onChange, onRemove }: {
+function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistoricalE1rm, onChange, onRemove }: {
   block: ExerciseBlock;
   sessionStartedAt: string;
   index: number;
+  previousSets: LoggedSet[] | null;
+  bestHistoricalE1rm: number;
   onChange: (block: ExerciseBlock) => void;
   onRemove: () => void;
 }) {
@@ -117,6 +121,8 @@ function ExerciseCard({ block, index, sessionStartedAt, onChange, onRemove }: {
   const [rom, setRom] = useState<RangeOfMotion>('full');
   const [quality, setQuality] = useState(4);
   const [pain, setPain] = useState(0);
+  const [showPR, setShowPR] = useState(false);
+  const prTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!nextPrescription) return;
@@ -159,7 +165,13 @@ function ExerciseCard({ block, index, sessionStartedAt, onChange, onRemove }: {
         durationSeconds: techniqueProfile(type).showDuration ? durationSeconds : undefined,
       },
     };
-    onChange({ ...block, sets: [...block.sets, set] });
+    const newSets = [...block.sets, set];
+    onChange({ ...block, sets: newSets });
+    if (estimated1Rm(set) > bestHistoricalE1rm && set.type !== 'warmup' && set.type !== 'approach') {
+      setShowPR(true);
+      if (prTimer.current) clearTimeout(prTimer.current);
+      prTimer.current = setTimeout(() => setShowPR(false), 3000);
+    }
   }
 
   return (
@@ -182,6 +194,21 @@ function ExerciseCard({ block, index, sessionStartedAt, onChange, onRemove }: {
         <View style={styles.inlineMenu}>
           <ActionButton label="Limpar sets" tone="secondary" onPress={() => { onChange({ ...block, sets: [] }); setMenu(false); }} />
           <ActionButton label="Remover exercício" tone="danger" onPress={onRemove} />
+        </View>
+      )}
+
+      {previousSets && previousSets.length > 0 && (
+        <View style={styles.ghostRow}>
+          <Text style={styles.ghostLabel}>ANT.</Text>
+          <Text style={styles.ghostSets} numberOfLines={2}>
+            {previousSets.filter(s => s.type !== 'warmup' && s.type !== 'approach').slice(0, 4).map(s => s.loadKg + '×' + s.repetitions + (s.rir !== undefined ? '@' + s.rir : '')).join('  ·  ')}
+          </Text>
+          {showPR && <PRBadge visible={showPR} />}
+        </View>
+      )}
+      {!previousSets && showPR && (
+        <View style={styles.ghostRow}>
+          <PRBadge visible={showPR} />
         </View>
       )}
 
@@ -264,9 +291,10 @@ function ExerciseCard({ block, index, sessionStartedAt, onChange, onRemove }: {
   );
 }
 
-export function WorkoutScreen({ session, programs, saveStatus, onChange, onFinish, onSelectProgram }: {
+export function WorkoutScreen({ session, programs, history, saveStatus, onChange, onFinish, onSelectProgram }: {
   session: WorkoutSession;
   programs: ProgramTemplate[];
+  history: WorkoutSession[];
   saveStatus: 'loading' | 'saved' | 'error';
   onChange: (session: WorkoutSession) => void;
   onFinish: () => void;
@@ -280,6 +308,26 @@ export function WorkoutScreen({ session, programs, saveStatus, onChange, onFinis
   const totalSets = session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
   const volume = useMemo(() => session.exercises.flatMap(exercise => exercise.sets).reduce((total, set) => total + setVolumeKg(set), 0), [session]);
   const workoutPrograms = programs.filter(program => isProgramCode(program.name));
+
+  const previousSetsMap = useMemo(() => {
+    const map = new Map<string, LoggedSet[] | null>();
+    for (const block of session.exercises) {
+      const key = normalizeExerciseKey(block);
+      map.set(block.id, lastSessionSetsForExercise(history, key, session.id));
+    }
+    return map;
+  }, [history, session.exercises.map(b => b.id).join(','), session.id]);
+
+  const prsMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const block of session.exercises) {
+      const key = normalizeExerciseKey(block);
+      const best = history.filter(s => s.endedAt).flatMap(s => s.exercises).filter(e => normalizeExerciseKey(e) === key).flatMap(e => e.sets.filter(s => s.type !== 'warmup' && s.type !== 'approach')).reduce((best, set) => Math.max(best, estimated1Rm(set)), 0);
+      map.set(block.id, best);
+    }
+    return map;
+  }, [history, session.exercises.map(b => b.id).join(',')]);
+
 
   useEffect(() => {
     if (!timerRunning) return;
@@ -375,7 +423,16 @@ export function WorkoutScreen({ session, programs, saveStatus, onChange, onFinis
         ) : null}
 
         {session.exercises.map((block, index) => (
-          <ExerciseCard key={block.id} block={block} index={index} sessionStartedAt={session.startedAt} onChange={next => updateBlock(block.id, next)} onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })} />
+          <ExerciseCard
+            key={block.id}
+            block={block}
+            index={index}
+            sessionStartedAt={session.startedAt}
+            previousSets={previousSetsMap.get(block.id) ?? null}
+            bestHistoricalE1rm={prsMap.get(block.id) ?? 0}
+            onChange={next => updateBlock(block.id, next)}
+            onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })}
+          />
         ))}
         <ActionButton label="+ ADICIONAR EXERCÍCIO" tone="secondary" onPress={() => setAddOpen(true)} />
         <ActionButton label="Finalizar treino" tone="danger" disabled={totalSets === 0} onPress={() => setFinishOpen(true)} />
@@ -432,6 +489,9 @@ const styles = StyleSheet.create({
   more: { color: colors.muted, padding: 10, letterSpacing: 2 },
   notePreview: { color: colors.textDim, fontSize: 10, fontStyle: 'italic', marginTop: 3 },
   inlineMenu: { backgroundColor: colors.elevated, borderRadius: 10, padding: 8, marginTop: 10 },
+  ghostRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingHorizontal: 2 },
+  ghostLabel: { color: colors.textDim, fontSize: 8, fontWeight: '800', width: 28 },
+  ghostSets: { flex: 1, color: colors.textDim, fontSize: 10, fontStyle: 'italic' },
   tableHeader: { flexDirection: 'row', marginTop: 16, paddingBottom: 7 },
   column: { flex: 1, color: colors.muted, fontSize: 9, textAlign: 'center' },
   smallColumn: { flex: 0.65, color: colors.muted, fontSize: 9, textAlign: 'center' },
