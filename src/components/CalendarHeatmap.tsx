@@ -1,9 +1,11 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { colors } from '../theme';
 import type { CalendarDay } from '../types/training';
 
-const DAYS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+const DAY_LABELS = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
+const GAP = 3;
+const LABEL_COL_WIDTH = 16;
 
 interface CalendarHeatmapProps {
   data: CalendarDay[][];
@@ -17,61 +19,70 @@ function cellColor(day: CalendarDay): string {
   return colors.accentBorder;
 }
 
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function CalendarHeatmap({ data, cellSize = 22, streak = 0 }: CalendarHeatmapProps) {
   if (data.length === 0) return null;
 
-  const monthLabels: { col: number; label: string }[] = [];
+  const today = localToday();
+
+  const monthLabels: (string | null)[] = [];
   let lastMonth = '';
-  data.forEach((week, col) => {
-    const firstWorkDay = week.find(d => d.date)?.date ?? week[0].date;
-    const d = new Date(firstWorkDay + 'T12:00:00');
-    const monthStr = d.toLocaleDateString('pt-BR', { month: 'short' });
+  data.forEach(week => {
+    const firstDay = week.find(d => d.date)?.date ?? week[0].date;
+    const monthStr = new Date(firstDay + 'T12:00:00').toLocaleDateString('pt-BR', { month: 'short' });
     if (monthStr !== lastMonth) {
-      monthLabels.push({ col, label: monthStr });
+      monthLabels.push(monthStr);
       lastMonth = monthStr;
+    } else {
+      monthLabels.push(null);
     }
   });
 
-  const numCols = data.length;
-  const totalWidth = numCols * (cellSize + 3);
-
   return (
-    <View style={styles.root}>
-      <View style={[styles.grid, { width: totalWidth }]}>
-        <View style={styles.monthRow}>
-          {monthLabels.map(({ col, label }) => (
-            <Text
-              key={col + label}
-              style={[styles.monthLabel, { left: col * (cellSize + 3) }]}
-            >
-              {label}
-            </Text>
-          ))}
-        </View>
-        <View style={styles.columns}>
-          {DAYS.map((day, row) => (
-            <View key={row} style={styles.dayLabelRow}>
-              <Text style={styles.dayLabel}>{row % 2 === 0 ? day : ''}</Text>
+    <View>
+      <View style={styles.row}>
+        <View style={{ width: LABEL_COL_WIDTH, marginTop: 18 }}>
+          {DAY_LABELS.map((label, i) => (
+            <View key={i} style={{ height: cellSize + GAP, justifyContent: 'center' }}>
+              <Text style={styles.dayLabel}>{i % 2 === 0 ? label : ''}</Text>
             </View>
           ))}
         </View>
-        <View style={styles.weeksRow}>
-          {data.map((week, col) => (
-            <View key={col} style={styles.weekCol}>
-              {week.map((day, row) => (
-                <View
-                  key={row}
-                  style={[
-                    styles.cell,
-                    { width: cellSize, height: cellSize, backgroundColor: cellColor(day) },
-                    day.date === localToday() && styles.today,
-                  ]}
-                />
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View>
+            <View style={styles.monthRow}>
+              {data.map((_, col) => (
+                <View key={col} style={{ width: cellSize, marginRight: col < data.length - 1 ? GAP : 0 }}>
+                  {monthLabels[col] ? <Text style={styles.monthLabel}>{monthLabels[col]}</Text> : null}
+                </View>
               ))}
             </View>
-          ))}
-        </View>
+
+            <View style={styles.weeksRow}>
+              {data.map((week, col) => (
+                <View key={col} style={{ marginRight: col < data.length - 1 ? GAP : 0 }}>
+                  {week.map((day, row) => (
+                    <View
+                      key={row}
+                      style={[
+                        styles.cell,
+                        { width: cellSize, height: cellSize, marginBottom: row < week.length - 1 ? GAP : 0, backgroundColor: cellColor(day) },
+                        day.date === today && styles.today,
+                      ]}
+                    />
+                  ))}
+                </View>
+              ))}
+            </View>
+          </View>
+        </ScrollView>
       </View>
+
       {streak > 0 && (
         <View style={styles.streakRow}>
           <Text style={styles.streakText}>{streak} {streak === 1 ? 'dia seguido' : 'dias seguidos'}</Text>
@@ -81,23 +92,14 @@ export function CalendarHeatmap({ data, cellSize = 22, streak = 0 }: CalendarHea
   );
 }
 
-function localToday(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
 const styles = StyleSheet.create({
-  root: { alignItems: 'center' },
-  grid: { position: 'relative' },
-  monthRow: { height: 14, position: 'relative', marginBottom: 3 },
-  monthLabel: { position: 'absolute', color: colors.muted, fontSize: 8, fontWeight: '700' },
-  columns: { position: 'absolute', left: -18, top: 17, flexDirection: 'column', gap: 3 },
-  dayLabelRow: { height: 22 },
-  dayLabel: { color: colors.textDim, fontSize: 7, fontWeight: '600' },
-  weeksRow: { flexDirection: 'row', gap: 3, marginTop: 17 },
-  weekCol: { flexDirection: 'column', gap: 3 },
+  row: { flexDirection: 'row' },
+  dayLabel: { color: colors.textDim, fontSize: 8, fontWeight: '600', textAlign: 'right', paddingRight: 4 },
+  monthRow: { flexDirection: 'row', height: 16, marginBottom: 2 },
+  monthLabel: { color: colors.muted, fontSize: 9, fontWeight: '700' },
+  weeksRow: { flexDirection: 'row' },
   cell: { borderRadius: 4 },
   today: { borderWidth: 1.5, borderColor: colors.accent },
-  streakRow: { marginTop: 10, alignItems: 'center' },
+  streakRow: { marginTop: 10, paddingLeft: LABEL_COL_WIDTH },
   streakText: { color: colors.accent, fontSize: 10, fontWeight: '700' },
 });
