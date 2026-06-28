@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Path, Rect } from 'react-native-svg';
 
 import { createDefaultData, mergeDefaultPrograms, sessionFromProgram } from './src/data/appDefaults';
 import { currentCycleNumber, isProgramCode } from './src/data/cycles';
@@ -18,6 +19,51 @@ import type { AppData, ExerciseBlock, ProgramTemplate, WorkoutSession } from './
 
 const tabs = ['Treino', 'Ciclos', 'Histórico', 'Análises', 'Programas'] as const;
 type Tab = typeof tabs[number];
+
+function TabIcon({ tab, color }: { tab: Tab; color: string }) {
+  return (
+    <Svg width={22} height={22} viewBox="0 0 22 22" fill="none">
+      {tab === 'Treino' && (
+        <>
+          <Path d="M8 11H14" stroke={color} strokeWidth={2} strokeLinecap="round" />
+          <Rect x={5} y={8} width={3} height={6} rx={1} fill={color} />
+          <Rect x={14} y={8} width={3} height={6} rx={1} fill={color} />
+          <Rect x={3} y={9.5} width={2} height={3} rx={0.8} fill={color} />
+          <Rect x={17} y={9.5} width={2} height={3} rx={0.8} fill={color} />
+        </>
+      )}
+      {tab === 'Ciclos' && (
+        <>
+          <Path d="M4 11C4 7.13 7.13 4 11 4C13.4 4 15.53 5.16 16.85 6.97" stroke={color} strokeWidth={2} strokeLinecap="round" />
+          <Path d="M18 11C18 14.87 14.87 18 11 18C8.6 18 6.47 16.84 5.15 15.03" stroke={color} strokeWidth={2} strokeLinecap="round" />
+          <Path d="M16 4.5L17.2 7L14.5 7.2" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+          <Path d="M6 17.5L4.8 15L7.5 14.8" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      )}
+      {tab === 'Histórico' && (
+        <>
+          <Circle cx={11} cy={11} r={7.5} stroke={color} strokeWidth={2} />
+          <Path d="M11 7.5V11.5L13.5 13.5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+        </>
+      )}
+      {tab === 'Análises' && (
+        <>
+          <Rect x={3.5} y={13} width={4} height={5} rx={1.5} fill={color} />
+          <Rect x={9} y={9} width={4} height={9} rx={1.5} fill={color} />
+          <Rect x={14.5} y={4} width={4} height={14} rx={1.5} fill={color} />
+        </>
+      )}
+      {tab === 'Programas' && (
+        <>
+          <Rect x={3} y={3} width={7} height={7} rx={1.5} stroke={color} strokeWidth={1.8} />
+          <Rect x={12} y={3} width={7} height={7} rx={1.5} stroke={color} strokeWidth={1.8} />
+          <Rect x={3} y={12} width={7} height={7} rx={1.5} stroke={color} strokeWidth={1.8} />
+          <Rect x={12} y={12} width={7} height={7} rx={1.5} stroke={color} strokeWidth={1.8} />
+        </>
+      )}
+    </Svg>
+  );
+}
 
 function emptyContinuation(session: WorkoutSession, cycleNumber?: number): WorkoutSession {
   const now = Date.now();
@@ -219,14 +265,11 @@ export default function App() {
         />
       )}
       <View style={styles.tabBar}>
-        {tabs.map((tab, index) => {
+        {tabs.map(tab => {
           const isActive = activeTab === tab;
-          const icons = ['⊕', '↻', '≡', '▲', '◈'];
           return (
             <Pressable key={tab} style={styles.tab} onPress={() => setActiveTab(tab)}>
-              <View style={[styles.tabIconWrap, isActive && styles.tabIconWrapActive]}>
-                <Text style={[styles.tabIcon, isActive && styles.tabIconActive]}>{icons[index]}</Text>
-              </View>
+              <TabIcon tab={tab} color={isActive ? colors.accent : colors.textDim} />
               <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab}</Text>
             </Pressable>
           );
@@ -246,11 +289,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingTop: 10, paddingBottom: 18,
   },
-  tab: { flex: 1, alignItems: 'center', gap: 4 },
-  tabIconWrap: { width: 36, height: 28, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center' },
-  tabIconWrapActive: { backgroundColor: colors.accentSoft },
-  tabIcon: { color: colors.muted, fontSize: 15 },
-  tabIconActive: { color: colors.accent },
-  tabText: { color: colors.textDim, fontSize: 8, fontWeight: '600' },
+  tab: { flex: 1, alignItems: 'center', gap: 5 },
+  tabText: { color: colors.textDim, fontSize: 9, fontWeight: '600', letterSpacing: 0.1 },
   tabTextActive: { color: colors.accent, fontWeight: '700' },
 });
