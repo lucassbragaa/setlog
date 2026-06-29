@@ -45,6 +45,10 @@ function previousSetsSummary(sets: LoggedSet[]) {
   return sets.slice(0, 4).map(compactSet).join(' - ') + (sets.length > 4 ? ' +' + (sets.length - 4) : '');
 }
 
+function previousForSet(sets: LoggedSet[], index: number) {
+  return sets[index] ? compactSet(sets[index]) : '-';
+}
+
 function TechniqueExecutionInputs({ type, config, segments, durationSeconds, onConfigChange, onSegmentsChange, onDurationChange }: {
   type: SetType;
   config?: TechniqueConfig;
@@ -118,8 +122,8 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
   const last = block.sets[block.sets.length - 1];
   const prescriptions = prescriptionsFor(block);
   const nextPrescription = prescriptions[block.sets.length];
-  const [weight, setWeight] = useState(last?.loadKg ?? 0);
-  const [reps, setReps] = useState(nextPrescription?.repRange[1] ?? last?.repetitions ?? 0);
+  const [weight, setWeight] = useState(last?.loadKg ?? previousSets[block.sets.length]?.loadKg ?? 0);
+  const [reps, setReps] = useState(nextPrescription?.repRange[1] ?? previousSets[block.sets.length]?.repetitions ?? last?.repetitions ?? 0);
   const [rir, setRir] = useState(nextPrescription?.rirRange[1] ?? last?.rir ?? 0);
   const [type, setType] = useState<SetType>(nextPrescription?.technique ?? 'working');
   const [techniqueConfig, setTechniqueConfig] = useState<TechniqueConfig | undefined>(() => configForTechnique(nextPrescription?.technique ?? 'working', nextPrescription?.techniqueConfig));
@@ -161,6 +165,15 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
       loadKg: weight,
       repetitions: totalRepetitions,
       rir,
+      previous: previousSets[block.sets.length] ? {
+        source: 'any-workout',
+        workoutId: 'previous',
+        workoutName: 'Anterior',
+        completedAt: previousSets[block.sets.length].completedAt,
+        loadKg: previousSets[block.sets.length].loadKg,
+        repetitions: previousSets[block.sets.length].repetitions,
+        rir: previousSets[block.sets.length].rir,
+      } : undefined,
       completedAt: nowOnLocalDate(sessionStartedAt),
       rangeOfMotion: rom,
       techniqueQuality: quality as 1 | 2 | 3 | 4 | 5,
@@ -179,64 +192,75 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
 
   return (
     <View style={styles.exerciseCard}>
-      <View style={commonStyles.between}>
+      <View style={styles.exerciseTop}>
         <View style={styles.exerciseHeader}>
           <View style={styles.number}><Text style={styles.numberText}>{String(index + 1).padStart(2, '0')}</Text></View>
           <View style={{ flex: 1 }}>
-            <Text style={commonStyles.cardTitle}>{block.exerciseName}</Text>
+            <Text style={styles.exerciseCardTitle}>{block.exerciseName}</Text>
             <Text style={prescriptions.length ? commonStyles.muted : styles.unprescribed}>
-              {prescriptions.length ? prescriptions.map(item => techniqueLabel(item.technique)).join(' / ') : 'Sem prescrição definida'}
+              {prescriptions.length ? prescriptions.map(item => techniqueLabel(item.technique)).join(' / ') : 'Sem prescricao definida'}
             </Text>
             {block.notes ? <Text style={styles.notePreview}>Obs.: {block.notes}</Text> : null}
-            {previousSets.length ? (
-              <View style={styles.previousBox}>
-                <Text style={styles.previousLabel}>ULTIMA VEZ</Text>
-                <Text style={styles.previousSets}>{previousSetsSummary(previousSets)}</Text>
-              </View>
-            ) : null}
             <PRBadge visible={prVisible} onDone={() => setPrVisible(false)} />
           </View>
         </View>
-        <Pressable onPress={() => setMenu(value => !value)}><Text style={styles.more}>•••</Text></Pressable>
+        <Pressable onPress={() => setMenu(value => !value)}><Text style={styles.more}>...</Text></Pressable>
       </View>
 
       {menu && (
         <View style={styles.inlineMenu}>
           <ActionButton label="Limpar sets" tone="secondary" onPress={() => { onChange({ ...block, sets: [] }); setMenu(false); }} />
-          <ActionButton label="Remover exercício" tone="danger" onPress={onRemove} />
+          <ActionButton label="Remover exercicio" tone="danger" onPress={onRemove} />
         </View>
       )}
 
-      <View style={styles.tableHeader}>
-        <Text style={styles.smallColumn}>SET</Text><Text style={styles.column}>CARGA</Text><Text style={styles.column}>REPS</Text><Text style={styles.column}>RIR</Text><Text style={styles.smallColumn}>AÇÃO</Text>
-      </View>
-      {block.sets.length === 0 ? <Text style={styles.emptySets}>Nenhum set registrado.</Text> : block.sets.map(set => (
-        <View style={styles.setRow} key={set.id}>
-          <View style={styles.smallCell}><Text style={styles.cellText}>{set.order}</Text><Text style={styles.techniqueMini}>{techniqueLabel(set.type)}</Text>{techniqueExecutionSummary(set) ? <Text style={styles.techniqueDetailMini}>{techniqueExecutionSummary(set)}</Text> : null}</View>
-          <Text style={styles.cell}>{set.loadKg} kg</Text>
-          <Text style={styles.cell}>{set.repetitions}</Text>
-          <Text style={styles.cell}>{set.rir ?? '—'}</Text>
-          <Pressable style={styles.smallCell} onPress={() => onChange({ ...block, sets: block.sets.filter(item => item.id !== set.id).map((item, order) => ({ ...item, order: order + 1 })) })}>
-            <Text style={styles.deleteSet}>×</Text>
-          </Pressable>
+      <View style={styles.setTable}>
+        <View style={styles.tableHeader}>
+          <Text style={styles.setColumn}>SET</Text>
+          <Text style={styles.previousColumn}>ANTERIOR</Text>
+          <Text style={styles.column}>KG</Text>
+          <Text style={styles.column}>REPS</Text>
+          <Text style={styles.column}>RIR</Text>
+          <Text style={styles.actionColumn}></Text>
         </View>
-      ))}
+        {block.sets.length === 0 ? (
+          <Text style={styles.emptySets}>Nenhum set registrado. A coluna anterior aparece quando houver historico deste exercicio.</Text>
+        ) : block.sets.map(set => (
+          <View style={styles.setRow} key={set.id}>
+            <View style={styles.setCell}><Text style={styles.cellText}>{set.order}</Text><Text style={styles.techniqueMini}>{techniqueLabel(set.type)}</Text>{techniqueExecutionSummary(set) ? <Text style={styles.techniqueDetailMini}>{techniqueExecutionSummary(set)}</Text> : null}</View>
+            <Text style={styles.previousCell}>{previousForSet(previousSets, set.order - 1)}</Text>
+            <Text style={styles.cell}>{set.loadKg}</Text>
+            <Text style={styles.cell}>{set.repetitions}</Text>
+            <Text style={styles.cell}>{set.rir ?? '-'}</Text>
+            <Pressable style={styles.actionCell} onPress={() => onChange({ ...block, sets: block.sets.filter(item => item.id !== set.id).map((item, order) => ({ ...item, order: order + 1 })) })}>
+              <Text style={styles.deleteSet}>x</Text>
+            </Pressable>
+          </View>
+        ))}
+      </View>
 
-      <View style={styles.nextPrescription}>
-        <Text style={styles.next}>{nextPrescription ? 'PRÓXIMO SET PRESCRITO' : 'PRÓXIMO SET · MANUAL'} · {techniqueLabel(type).toUpperCase()}</Text>
-        {nextPrescription ? <Text style={styles.target}>META {prescriptionSummary(nextPrescription).toUpperCase()} · RIR {nextPrescription.rirRange[0]}–{nextPrescription.rirRange[1]}</Text> : null}
+      <View style={styles.logPanel}>
+        <View style={commonStyles.between}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.next}>{nextPrescription ? 'PROXIMO SET PRESCRITO' : 'LOGAR PROXIMO SET'}</Text>
+            <Text style={styles.target}>{techniqueLabel(type)} - anterior: {previousForSet(previousSets, block.sets.length)}</Text>
+            {nextPrescription ? <Text style={styles.target}>Meta {prescriptionSummary(nextPrescription)} - RIR {nextPrescription.rirRange[0]}-{nextPrescription.rirRange[1]}</Text> : null}
+          </View>
+          <View style={styles.setNumberBadge}><Text style={styles.setNumberText}>{block.sets.length + 1}</Text></View>
+        </View>
+        <View style={styles.steppers}>
+          <Stepper label="KG" value={weight} suffix=" kg" step={0.5} onChange={setWeight} />
+          {(techniqueProfile(type).mode === 'single' || (techniqueConfig?.blocks ?? 1) === 1) ? <Stepper label={techniqueProfile(type).primaryRepsLabel} value={reps} max={100} onChange={setReps} /> : null}
+          <Stepper label="RIR" value={rir} max={10} onChange={setRir} />
+        </View>
       </View>
-      <View style={styles.steppers}>
-        <Stepper label="CARGA" value={weight} suffix=" kg" step={0.5} onChange={setWeight} />
-        {(techniqueProfile(type).mode === 'single' || (techniqueConfig?.blocks ?? 1) === 1) ? <Stepper label={techniqueProfile(type).primaryRepsLabel} value={reps} max={100} onChange={setReps} /> : null}
-        <Stepper label="RIR" value={rir} max={10} onChange={setRir} />
-      </View>
+
       <View style={styles.quickWeights}>
         <Text style={styles.quickWeightsLabel}>REDUZIR CARGA</Text>
         <View style={styles.quickWeightsRow}>
           {[2.5, 5, 10, 20].map(amount => (
             <Pressable key={amount} style={[styles.quickWeight, styles.quickWeightReduce]} onPress={() => setWeight(value => Math.max(0, value - amount))}>
-              <Text style={styles.quickWeightReduceText}>{'−' + String(amount).replace('.', ',') + ' kg'}</Text>
+              <Text style={styles.quickWeightReduceText}>{'-' + String(amount).replace('.', ',') + ' kg'}</Text>
             </Pressable>
           ))}
         </View>
@@ -260,11 +284,11 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
         onDurationChange={setDurationSeconds}
       />
 
-      <Text style={styles.detailTitle}>TÉCNICA DESTE SET</Text>
+      <Text style={styles.detailTitle}>TIPO DE SET</Text>
       <View style={styles.chips}>
         {techniqueOptions.map(option => <Chip key={option.value} label={option.label} selected={type === option.value} onPress={() => { const config = configForTechnique(option.value); setType(option.value); setTechniqueConfig(config); setSegmentReps(buildSegments(option.value, reps, { technique: option.value, repRange: [reps, reps], rirRange: [rir, rir], techniqueConfig: config })); setDurationSeconds(0); }} />)}
       </View>
-      <Chip label={details ? '− Fechar detalhes e observações' : '+ Detalhes e observações'} selected={details} onPress={() => setDetails(value => !value)} />
+      <Chip label={details ? '- Fechar detalhes e observacoes' : '+ Detalhes e observacoes'} selected={details} onPress={() => setDetails(value => !value)} />
 
       {details && (
         <View style={styles.details}>
@@ -273,15 +297,15 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
             <Chip label="Completa" selected={rom === 'full'} onPress={() => setRom('full')} />
             <Chip label="Parcial alongada" selected={rom === 'lengthenedPartial'} onPress={() => setRom('lengthenedPartial')} />
           </View>
-          <Text style={styles.detailTitle}>Técnica de execução · {quality}/5</Text>
+          <Text style={styles.detailTitle}>Tecnica de execucao - {quality}/5</Text>
           <Stepper label="QUALIDADE" value={quality} min={1} max={5} onChange={setQuality} />
-          <Text style={styles.detailTitle}>Dor · {pain}/10</Text>
+          <Text style={styles.detailTitle}>Dor - {pain}/10</Text>
           <Stepper label="DOR" value={pain} max={10} onChange={setPain} />
-          <Text style={styles.detailTitle}>Observações do exercício</Text>
-          <TextInput multiline value={block.notes ?? ''} onChangeText={notes => onChange({ ...block, notes })} placeholder="Execução, ajustes, equipamento ou qualquer detalhe…" placeholderTextColor={colors.textDim} style={styles.notes} />
+          <Text style={styles.detailTitle}>Observacoes do exercicio</Text>
+          <TextInput multiline value={block.notes ?? ''} onChangeText={notes => onChange({ ...block, notes })} placeholder="Execucao, ajustes, equipamento ou qualquer detalhe..." placeholderTextColor={colors.textDim} style={styles.notes} />
         </View>
       )}
-      <ActionButton label={'REGISTRAR SET ' + (block.sets.length + 1)} onPress={logSet} />
+      <ActionButton label={'ADICIONAR SET ' + (block.sets.length + 1)} onPress={logSet} />
     </View>
   );
 }
@@ -388,17 +412,22 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
           </View>
         </View>
 
-        <View style={commonStyles.between}>
-          <ScreenTitle eyebrow="SESSÃO EM ANDAMENTO" title={session.name} subtitle={session.exercises.length + ' exercícios · ' + totalSets + ' sets registrados'} />
-          <View style={styles.live}><View style={styles.dot} /><Text style={styles.liveText}>LIVE</Text></View>
-        </View>
-        <Text style={[styles.save, saveStatus === 'error' && { color: colors.danger }]}>{saveStatus === 'saved' ? '● Salvo neste dispositivo' : saveStatus === 'error' ? 'Falha ao salvar' : 'Salvando…'}</Text>
-        <DateEditor value={session.startedAt} onChange={startedAt => onChange(moveSessionToStartedAt(session, startedAt))} />
-
-        <View style={styles.metrics}>
-          <View><Text style={styles.metricValue}>{totalSets}</Text><Text style={styles.metricLabel}>SETS</Text></View>
-          <View><Text style={styles.metricValue}>{volume.toLocaleString('pt-BR')}</Text><Text style={styles.metricLabel}>KG VOLUME</Text></View>
-          <View><Text style={styles.metricValue}>{formatTimer(restSeconds)}</Text><Text style={styles.metricLabel}>DESCANSO</Text></View>
+        <View style={styles.workoutHero}>
+          <View style={commonStyles.between}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.selectorLabel}>WORKOUT IN PROGRESS</Text>
+              <Text style={styles.workoutTitle}>{session.name}</Text>
+              <Text style={styles.workoutSubtitle}>{session.exercises.length} exercicios - {totalSets} sets registrados</Text>
+            </View>
+            <View style={styles.live}><View style={styles.dot} /><Text style={styles.liveText}>LIVE</Text></View>
+          </View>
+          <View style={styles.metrics}>
+            <View><Text style={styles.metricValue}>{totalSets}</Text><Text style={styles.metricLabel}>SETS</Text></View>
+            <View><Text style={styles.metricValue}>{volume.toLocaleString('pt-BR')}</Text><Text style={styles.metricLabel}>KG</Text></View>
+            <View><Text style={styles.metricValue}>{formatTimer(restSeconds)}</Text><Text style={styles.metricLabel}>REST</Text></View>
+          </View>
+          <Text style={[styles.save, saveStatus === 'error' && { color: colors.danger }]}>{saveStatus === 'saved' ? 'Salvo neste dispositivo' : saveStatus === 'error' ? 'Falha ao salvar' : 'Salvando...'}</Text>
+          <DateEditor value={session.startedAt} onChange={startedAt => onChange(moveSessionToStartedAt(session, startedAt))} />
         </View>
 
         {timerRunning || restSeconds > 0 ? (
@@ -462,7 +491,12 @@ const styles = StyleSheet.create({
   programCardDescription: { color: colors.textDim, fontSize: 9, marginTop: 4 },
   programCardDescriptionSelected: { color: colors.surface },
   programCardActive: { color: colors.background, fontSize: 8, fontWeight: '900', marginTop: 8, letterSpacing: 1 },
-  exerciseCard: { ...commonStyles.card, padding: 15 },
+  workoutHero: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 20, padding: 16, marginTop: 10, marginBottom: 4 },
+  workoutTitle: { color: colors.text, fontSize: 30, fontWeight: '900', letterSpacing: -0.6, marginTop: 4 },
+  workoutSubtitle: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 4 },
+  exerciseCard: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 14, marginTop: 14 },
+  exerciseTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  exerciseCardTitle: { color: colors.text, fontWeight: '900', fontSize: 18 },
   exerciseHeader: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   number: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.accentSoft, justifyContent: 'center', alignItems: 'center' },
   numberText: { color: colors.accent, fontWeight: '800', fontSize: 11 },
@@ -473,20 +507,30 @@ const styles = StyleSheet.create({
   previousLabel: { color: colors.textDim, fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   previousSets: { color: colors.muted, fontSize: 10, fontStyle: 'italic', marginTop: 2 },
   inlineMenu: { backgroundColor: colors.elevated, borderRadius: 10, padding: 8, marginTop: 10 },
-  tableHeader: { flexDirection: 'row', marginTop: 16, paddingBottom: 7 },
-  column: { flex: 1, color: colors.muted, fontSize: 9, textAlign: 'center' },
+  setTable: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, overflow: 'hidden', marginTop: 14, backgroundColor: colors.background },
+  tableHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.elevated, paddingVertical: 8, paddingHorizontal: 7 },
+  column: { flex: 0.85, color: colors.muted, fontSize: 9, textAlign: 'center', fontWeight: '900' },
+  setColumn: { flex: 0.65, color: colors.muted, fontSize: 9, textAlign: 'center', fontWeight: '900' },
+  previousColumn: { flex: 1.55, color: colors.muted, fontSize: 9, textAlign: 'center', fontWeight: '900' },
+  actionColumn: { flex: 0.45 },
   smallColumn: { flex: 0.65, color: colors.muted, fontSize: 9, textAlign: 'center' },
-  setRow: { flexDirection: 'row', alignItems: 'center', minHeight: 46, borderTopWidth: 1, borderTopColor: colors.border },
-  cell: { flex: 1, color: colors.text, fontSize: 13, textAlign: 'center', fontWeight: '600' },
+  setRow: { flexDirection: 'row', alignItems: 'center', minHeight: 48, borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 7 },
+  cell: { flex: 0.85, color: colors.text, fontSize: 13, textAlign: 'center', fontWeight: '800' },
+  previousCell: { flex: 1.55, color: colors.textDim, fontSize: 10, textAlign: 'center', fontWeight: '700' },
   cellText: { color: colors.text, textAlign: 'center', fontWeight: '700' },
+  setCell: { flex: 0.65, alignItems: 'center', justifyContent: 'center' },
+  actionCell: { flex: 0.45, alignItems: 'center', justifyContent: 'center' },
   smallCell: { flex: 0.65, alignItems: 'center', justifyContent: 'center' },
   techniqueMini: { color: colors.accent, fontSize: 7, textAlign: 'center', marginTop: 2 },
   techniqueDetailMini: { color: colors.textDim, fontSize: 6, textAlign: 'center', marginTop: 2 },
   deleteSet: { color: colors.danger, fontSize: 20 },
-  emptySets: { color: colors.textDim, fontSize: 12, paddingVertical: 13, textAlign: 'center', borderTopWidth: 1, borderColor: colors.border },
+  emptySets: { color: colors.textDim, fontSize: 12, paddingVertical: 18, paddingHorizontal: 12, textAlign: 'center', borderTopWidth: 1, borderColor: colors.border, lineHeight: 17 },
+  logPanel: { backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 13, marginTop: 13 },
+  setNumberBadge: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
+  setNumberText: { color: colors.background, fontSize: 16, fontWeight: '900' },
   nextPrescription: { marginTop: 15 },
-  next: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  target: { color: colors.muted, fontSize: 10, marginTop: 4 },
+  next: { color: colors.accent, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  target: { color: colors.muted, fontSize: 10, marginTop: 4, lineHeight: 15 },
   steppers: { flexDirection: 'row', gap: 7, marginTop: 10 },
   techniqueExecution: { backgroundColor: colors.elevated, borderRadius: 12, padding: 10, marginTop: 12 },
   techniqueHelp: { color: colors.textDim, fontSize: 10, lineHeight: 15, marginBottom: 10 },
@@ -508,9 +552,9 @@ const styles = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger },
   liveText: { color: colors.text, fontSize: 9, fontWeight: '800' },
   save: { color: colors.success, fontSize: 10, marginTop: 3 },
-  metrics: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, paddingVertical: 17, marginTop: 20 },
-  metricValue: { color: colors.text, fontWeight: '800', fontSize: 18, textAlign: 'center' },
-  metricLabel: { color: colors.muted, fontSize: 9, textAlign: 'center', marginTop: 3 },
+  metrics: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, paddingVertical: 15, marginTop: 15 },
+  metricValue: { color: colors.text, fontWeight: '900', fontSize: 21, textAlign: 'center' },
+  metricLabel: { color: colors.muted, fontSize: 9, textAlign: 'center', marginTop: 3, fontWeight: '900' },
   timer: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: 12, padding: 13, marginTop: 14 },
   timerValue: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2 },
   libraryItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
