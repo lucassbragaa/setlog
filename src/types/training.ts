@@ -2,6 +2,7 @@ export type SetType =
   | 'warmup'
   | 'approach'
   | 'working'
+  | 'failure'
   | 'topSet'
   | 'backoff'
   | 'drop'
@@ -49,12 +50,27 @@ export interface LoggedTechniqueDetails {
   durationSeconds?: number;
 }
 
+export interface PreviousSetSnapshot {
+  source: 'any-workout' | 'same-routine';
+  workoutId: string;
+  workoutName: string;
+  completedAt: string;
+  loadKg?: number;
+  repetitions?: number;
+  durationSeconds?: number;
+  distanceMeters?: number;
+  rir?: number;
+  rpe?: number;
+}
+
 export interface LoggedSet {
   id: string;
   order: number;
   type: SetType;
   loadKg: number;
   repetitions: number;
+  durationSeconds?: number;
+  distanceMeters?: number;
   rir?: number;
   rpe?: number;
   completedAt: string;
@@ -66,11 +82,13 @@ export interface LoggedSet {
   partialRepetitions?: number;
   painScore?: number;
   notes?: string;
+  previous?: PreviousSetSnapshot;
   techniqueDetails?: LoggedTechniqueDetails;
 }
 
 export interface ProgramExercise {
   exerciseId: string;
+  exerciseTemplateId?: string;
   exerciseName: string;
   targetSets: number;
   targetRepRange: [number, number];
@@ -78,7 +96,10 @@ export interface ProgramExercise {
   targetRestSeconds: number;
   setPrescriptions?: SetPrescription[];
   notes?: string;
+  supersetGroupId?: string;
+  routineNote?: string;
 }
+
 
 export interface ExerciseBlock extends ProgramExercise {
   id: string;
@@ -93,21 +114,148 @@ export interface WorkoutSession {
   programId?: string;
   cycleNumber?: number;
   exercises: ExerciseBlock[];
+  notes?: string;
+  perceivedEffort?: 1 | 2 | 3 | 4 | 5;
+  visibility?: 'private' | 'public' | 'followers';
 }
+
 
 export interface ProgramTemplate {
   id: string;
   name: string;
   description: string;
   split?: 'Upper' | 'Lower';
+  folderId?: string;
+  order?: number;
   exercises: ProgramExercise[];
 }
 
+
+
+export type MuscleGroup =
+  | 'neck'
+  | 'traps'
+  | 'shoulders'
+  | 'chest'
+  | 'upper-back'
+  | 'lats'
+  | 'lower-back'
+  | 'biceps'
+  | 'triceps'
+  | 'forearms'
+  | 'abs'
+  | 'glutes'
+  | 'quads'
+  | 'hamstrings'
+  | 'calves'
+  | 'adductors'
+  | 'abductors'
+  | 'cardio'
+  | 'full-body';
+
+export type EquipmentType =
+  | 'barbell'
+  | 'dumbbell'
+  | 'machine'
+  | 'cable'
+  | 'smith-machine'
+  | 'bodyweight'
+  | 'assisted-bodyweight'
+  | 'band'
+  | 'kettlebell'
+  | 'cardio-machine'
+  | 'other';
+
+export type ExerciseKind =
+  | 'weight-reps'
+  | 'bodyweight-reps'
+  | 'assisted-bodyweight'
+  | 'weighted-bodyweight'
+  | 'duration'
+  | 'distance-duration';
+
+export interface ExerciseTemplate {
+  id: string;
+  name: string;
+  kind: ExerciseKind;
+  primaryMuscles: MuscleGroup[];
+  secondaryMuscles?: MuscleGroup[];
+  equipment: EquipmentType;
+  instructions?: string[];
+  aliases?: string[];
+  isCustom?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface RoutineFolder {
+  id: string;
+  name: string;
+  order: number;
+  createdAt: string;
+  updatedAt?: string;
+}
+
+export type PreviousValuesMode = 'any-workout' | 'same-routine';
+export type UnitSystem = 'metric' | 'imperial';
+export type WeekStart = 'monday' | 'sunday';
+
+export interface PlateInventoryItem {
+  weightKg: number;
+  count: number;
+}
+
+export interface AppSettings {
+  unitSystem: UnitSystem;
+  weekStart: WeekStart;
+  previousValuesMode: PreviousValuesMode;
+  showRpe: boolean;
+  defaultRestSeconds: number;
+  barWeightKg: number;
+  plateInventory: PlateInventoryItem[];
+  theme: 'black-white';
+}
+
+export type BodyMeasurementKey =
+  | 'neck'
+  | 'shoulders'
+  | 'chest'
+  | 'leftArm'
+  | 'rightArm'
+  | 'waist'
+  | 'hips'
+  | 'leftThigh'
+  | 'rightThigh'
+  | 'leftCalf'
+  | 'rightCalf';
+
+export interface BodyMeasurementEntry {
+  id: string;
+  measuredAt: string;
+  bodyWeightKg?: number;
+  bodyFatPercent?: number;
+  circumferencesCm?: Partial<Record<BodyMeasurementKey, number>>;
+  photoDataUrl?: string;
+  notes?: string;
+}
+
+export interface AppSchemaMeta {
+  version: 3;
+  migratedAt?: string;
+  sourceVersion?: number;
+}
+
 export interface AppData {
+  schema: AppSchemaMeta;
   activeSession: WorkoutSession;
   history: WorkoutSession[];
   programs: ProgramTemplate[];
+  routineFolders: RoutineFolder[];
+  exerciseTemplates: ExerciseTemplate[];
+  measurements: BodyMeasurementEntry[];
+  settings: AppSettings;
 }
+
 
 export type Timeframe = '1m' | '3m' | '6m' | '1y' | 'all';
 

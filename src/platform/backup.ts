@@ -1,23 +1,26 @@
 import type { AppData } from '../types/training';
+import { isUpgradeableAppData, upgradeAppData } from '../storage/migrations';
 
 type BackupEnvelope = {
   format: 'setlog-backup';
-  version: 1;
+  version: 2;
   exportedAt: string;
   data: AppData;
 };
 
-function isAppData(value: unknown): value is AppData {
-  if (!value || typeof value !== 'object') return false;
-  const candidate = value as Partial<AppData>;
-  return Boolean(candidate.activeSession) && Array.isArray(candidate.history) && Array.isArray(candidate.programs);
+function parseBackup(value: unknown): AppData | null {
+  const restored = value && typeof value === 'object' && 'format' in value && (value as BackupEnvelope).format === 'setlog-backup'
+    ? (value as BackupEnvelope).data
+    : value;
+  if (!isUpgradeableAppData(restored)) return null;
+  return upgradeAppData(restored);
 }
 
 export async function exportBackup(data: AppData): Promise<void> {
   if (typeof document === 'undefined' || typeof URL === 'undefined') return;
   const envelope: BackupEnvelope = {
     format: 'setlog-backup',
-    version: 1,
+    version: 2,
     exportedAt: new Date().toISOString(),
     data,
   };
@@ -29,7 +32,7 @@ export async function exportBackup(data: AppData): Promise<void> {
       await navigator.share({ files: [file], title: 'Backup completo do Setlog' });
       return;
     } catch {
-      // Se o compartilhamento for cancelado ou indisponível, oferece o download comum.
+      // Se o compartilhamento for cancelado ou indisponivel, oferece o download comum.
     }
   }
   const blob = new Blob([contents], { type: 'application/json' });
@@ -54,16 +57,15 @@ export function chooseBackupFile(): Promise<AppData | null> {
       try {
         const file = input.files?.[0];
         if (!file) return resolve(null);
-        const parsed = JSON.parse(await file.text()) as BackupEnvelope | AppData;
-        const restored = 'format' in parsed && parsed.format === 'setlog-backup' ? parsed.data : parsed;
-        if (!isAppData(restored)) {
-          window.alert('Este arquivo não é um backup válido do Setlog.');
+        const restored = parseBackup(JSON.parse(await file.text()));
+        if (!restored) {
+          window.alert('Este arquivo nao e um backup valido do Setlog.');
           return resolve(null);
         }
-        const confirmed = window.confirm('Restaurar este backup substituirá os dados atuais do Setlog neste aparelho. Continuar?');
+        const confirmed = window.confirm('Restaurar este backup substituira os dados atuais do Setlog neste aparelho. Continuar?');
         resolve(confirmed ? restored : null);
       } catch {
-        window.alert('Não foi possível ler este backup.');
+        window.alert('Nao foi possivel ler este backup.');
         resolve(null);
       } finally {
         input.remove();

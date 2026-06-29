@@ -17,9 +17,10 @@ import {
   workoutHeatmap,
 } from '../data/analytics';
 import { PROGRAM_SEQUENCE, type ProgramCode } from '../data/cycles';
+import { muscleSetDistribution } from '../data/hevyAnalytics';
 import { estimated1Rm, setVolumeKg } from '../data/setMetrics';
 import { colors, radius, type } from '../theme';
-import type { ExerciseBlock, LoggedSet, Timeframe, WorkoutSession } from '../types/training';
+import type { ExerciseBlock, ExerciseTemplate, LoggedSet, Timeframe, WorkoutSession } from '../types/training';
 import { Chip, commonStyles, ScreenTitle } from '../ui';
 
 type Mode = 'overview' | 'program' | 'exercise';
@@ -76,7 +77,7 @@ function kg(value: number) {
   return Math.round(value).toLocaleString('pt-BR') + ' kg';
 }
 
-export function AnalyticsScreen({ sessions }: { sessions: WorkoutSession[] }) {
+export function AnalyticsScreen({ sessions, exerciseTemplates = [] }: { sessions: WorkoutSession[]; exerciseTemplates?: ExerciseTemplate[] }) {
   const [mode, setMode] = useState<Mode>('overview');
   const [selected, setSelected] = useState<ProgramCode>('A1');
   const [timeframe, setTimeframe] = useState<Timeframe>('6m');
@@ -87,6 +88,7 @@ export function AnalyticsScreen({ sessions }: { sessions: WorkoutSession[] }) {
   const heatmap = useMemo(() => workoutHeatmap(sessions, 12), [sessions]);
   const weekly = useMemo(() => weeklyVolumeSummary(sessions, 8), [sessions]);
   const streak = useMemo(() => computeStreak(sessions), [sessions]);
+  const muscleSummary = useMemo(() => muscleSetDistribution(sessions, exerciseTemplates), [sessions, exerciseTemplates]);
 
   const exerciseOptions = useMemo(() => {
     const map = new Map<string, { key: string; name: string; count: number; volume: number }>();
@@ -118,20 +120,21 @@ export function AnalyticsScreen({ sessions }: { sessions: WorkoutSession[] }) {
         <Chip label="Por treino" selected={mode === 'program'} onPress={() => setMode('program')} />
         <Chip label="Por exercicio" selected={mode === 'exercise'} onPress={() => setMode('exercise')} />
       </View>
-      {mode === 'overview' ? <OverviewTab completed={completed} heatmap={heatmap} weekly={weekly} streak={streak} exerciseOptions={exerciseOptions} prs={prs} /> : null}
+      {mode === 'overview' ? <OverviewTab completed={completed} heatmap={heatmap} weekly={weekly} streak={streak} exerciseOptions={exerciseOptions} prs={prs} muscleSummary={muscleSummary} /> : null}
       {mode === 'program' ? <ProgramTab selected={selected} setSelected={setSelected} sessions={sessions} /> : null}
       {mode === 'exercise' ? <ExerciseTab sessions={sessions} exerciseOptions={exerciseOptions} activeExerciseKey={activeExerciseKey} activeExerciseName={activeExerciseName} setSelectedExerciseKey={setSelectedExerciseKey} timeframe={timeframe} setTimeframe={setTimeframe} prs={prs} /> : null}
     </ScrollView>
   );
 }
 
-function OverviewTab({ completed, heatmap, weekly, streak, exerciseOptions, prs }: {
+function OverviewTab({ completed, heatmap, weekly, streak, exerciseOptions, prs, muscleSummary }: {
   completed: WorkoutSession[];
   heatmap: ReturnType<typeof workoutHeatmap>;
   weekly: ReturnType<typeof weeklyVolumeSummary>;
   streak: ReturnType<typeof computeStreak>;
   exerciseOptions: { key: string; name: string; count: number; volume: number }[];
   prs: Map<string, ReturnType<typeof computePRs> extends Map<string, infer PR> ? PR : never>;
+  muscleSummary: ReturnType<typeof muscleSetDistribution>;
 }) {
   const totalVolume = completed.reduce((total, session) => total + volumeForSession(session), 0);
   const totalSets = completed.reduce((total, session) => total + setCountForSession(session), 0);
@@ -168,6 +171,20 @@ function OverviewTab({ completed, heatmap, weekly, streak, exerciseOptions, prs 
               <View style={styles.volumeTrack}><View style={[styles.volumeFill, { width: (Math.max(4, (exercise.volume / Math.max(exerciseOptions[0]?.volume ?? 1, 1)) * 100) + '%') as DimensionValue }]} /></View>
             </View>
             <Text style={styles.rankValue}>{kg(exercise.volume)}</Text>
+          </View>
+        ))}
+      </View>
+      <View style={commonStyles.card}>
+        <Text style={commonStyles.cardTitle}>Sets por grupo muscular</Text>
+        {muscleSummary.length === 0 ? (
+          <Text style={[commonStyles.muted, { marginTop: 8 }]}>Os grupos musculares aparecem aqui conforme a biblioteca de exercicios v3 for usada nos logs.</Text>
+        ) : muscleSummary.slice(0, 8).map(item => (
+          <View key={item.muscle} style={styles.rankRow}>
+            <Text style={styles.rank}>{item.muscle}</Text>
+            <View style={{ flex: 1 }}>
+              <View style={styles.volumeTrack}><View style={[styles.volumeFill, { width: (Math.max(4, (item.totalWeightedSets / Math.max(muscleSummary[0]?.totalWeightedSets ?? 1, 1)) * 100) + '%') as DimensionValue }]} /></View>
+            </View>
+            <Text style={styles.rankValue}>{item.totalWeightedSets.toFixed(1)} sets</Text>
           </View>
         ))}
       </View>

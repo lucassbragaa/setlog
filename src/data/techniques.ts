@@ -2,6 +2,7 @@ import type { ProgramExercise, SetPrescription, SetType, TechniqueConfig } from 
 
 export const techniqueOptions: { value: SetType; label: string }[] = [
   { value: 'working', label: 'Straight set' },
+  { value: 'failure', label: 'Failure' },
   { value: 'topSet', label: 'Top set' },
   { value: 'backoff', label: 'Backoff' },
   { value: 'muscleRound', label: 'Muscle round' },
@@ -75,6 +76,7 @@ export function techniqueProfile(type: SetType): TechniqueProfile {
     case 'backoff': return single('REPS', 'Set posterior com carga reduzida, registrado como um bloco contínuo.');
     case 'approach': return single('REPS', 'Set de aproximação para chegar à carga de trabalho.');
     case 'warmup': return single('REPS', 'Set de aquecimento, sem pausa interna prescrita.');
+    case 'failure': return single('REPS', 'Set levado ate a falha tecnica ou muscular.');
     default: return single('REPS', 'Set contínuo convencional.');
   }
 }

@@ -160,7 +160,7 @@ export default function App() {
     const now = Date.now();
     setData(current => ({
       ...current,
-      programs: [...current.programs, { ...program, id: 'custom-' + now, name: program.name + ' - copia', split: undefined }],
+      programs: [...current.programs, { ...program, id: 'custom-' + now, name: program.name + ' - copia', split: undefined, folderId: 'folder-custom', order: current.programs.length + 1 }],
     }));
   }
 
@@ -172,6 +172,8 @@ export default function App() {
         id: 'custom-' + now,
         name: 'Novo treino ' + (current.programs.filter(item => item.id.startsWith('custom-')).length + 1),
         description: 'Treino criado manualmente',
+        folderId: 'folder-custom',
+        order: current.programs.length + 1,
         exercises: [],
       }],
     }));
@@ -189,6 +191,8 @@ export default function App() {
       id: 'custom-' + now,
       name: 'Meu programa ' + (data.programs.filter(item => item.id.startsWith('custom-')).length + 1),
       description: 'Criado a partir do treino atual',
+      folderId: 'folder-custom',
+      order: data.programs.length + 1,
       exercises: data.activeSession.exercises.map(({ exerciseId, exerciseName, targetSets, targetRepRange, targetRirRange, targetRestSeconds, setPrescriptions, notes }) => ({
         exerciseId, exerciseName, targetSets, targetRepRange, targetRirRange, targetRestSeconds, setPrescriptions, notes,
       })),
@@ -218,7 +222,7 @@ export default function App() {
           onDelete={id => setData(current => ({ ...current, history: current.history.filter(session => session.id !== id) }))}
         />
       )}
-      {activeTab === 'Analises' && <AnalyticsScreen sessions={data.history} />}
+      {activeTab === 'Analises' && <AnalyticsScreen sessions={data.history} exerciseTemplates={data.exerciseTemplates} />}
       {activeTab === 'Programas' && (
         <ProgramsScreen
           programs={data.programs}
