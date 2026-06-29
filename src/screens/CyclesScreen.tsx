@@ -1,16 +1,56 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { completedCodes, currentCycleNumber, MAX_CYCLES, nextProgramCode, PROGRAM_SEQUENCE, totalCycleCompletions } from '../data/cycles';
 import { colors } from '../theme';
-import type { WorkoutSession } from '../types/training';
+import { loadGitHubToken, pullAppDataFromGitHub, pushAppDataToGitHub, saveGitHubToken } from '../platform/githubSync';
+import type { AppData, GitHubSyncSettings, WorkoutSession } from '../types/training';
 import { ActionButton, commonStyles, ScreenTitle } from '../ui';
 
-export function CyclesScreen({ history, onExport, onImport }: { history: WorkoutSession[]; onExport: () => void; onImport: () => void }) {
+export function CyclesScreen({ history, data, onDataChange, onExport, onImport }: { history: WorkoutSession[]; data: AppData; onDataChange: (data: AppData) => void; onExport: () => void; onImport: () => void }) {
   const currentCycle = currentCycleNumber(history);
   const currentDone = completedCodes(history, currentCycle);
   const totalDone = totalCycleCompletions(history);
   const totalPlanned = MAX_CYCLES * PROGRAM_SEQUENCE.length;
   const overallPercent = Math.round((totalDone / totalPlanned) * 100);
+  const [githubToken, setGithubToken] = useState('');
+  const [syncStatus, setSyncStatus] = useState(data.settings.githubSync.lastStatus ?? '');
+  const sync = data.settings.githubSync;
+
+  useEffect(() => {
+    loadGitHubToken().then(setGithubToken).catch(() => setSyncStatus('Nao foi possivel carregar o token local.'));
+  }, []);
+
+  function updateGitHubSync(patch: Partial<GitHubSyncSettings>) {
+    onDataChange({ ...data, settings: { ...data.settings, githubSync: { ...data.settings.githubSync, ...patch } } });
+  }
+
+  async function persistToken(nextToken: string) {
+    setGithubToken(nextToken);
+    await saveGitHubToken(nextToken);
+  }
+
+  async function pushToGitHub() {
+    try {
+      setSyncStatus('Enviando para GitHub...');
+      const result = await pushAppDataToGitHub(data, githubToken);
+      if (result.data) onDataChange(result.data);
+      setSyncStatus(result.message);
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : 'Falha ao enviar para GitHub.');
+    }
+  }
+
+  async function pullFromGitHub() {
+    try {
+      setSyncStatus('Baixando do GitHub...');
+      const result = await pullAppDataFromGitHub(sync, githubToken);
+      if (result.data) onDataChange(result.data);
+      setSyncStatus(result.message);
+    } catch (error) {
+      setSyncStatus(error instanceof Error ? error.message : 'Falha ao baixar do GitHub.');
+    }
+  }
 
   return (
     <ScrollView contentContainerStyle={commonStyles.screen}>
@@ -57,6 +97,24 @@ export function CyclesScreen({ history, onExport, onImport }: { history: Workout
         <Text style={[commonStyles.muted, { marginTop: 6 }]}>Inclui prescrições, treino ativo, histórico, ciclos, observações e todos os sets registrados. Guarde o arquivo no iCloud ou no app Arquivos.</Text>
         <ActionButton label="EXPORTAR BACKUP COMPLETO" onPress={onExport} />
         <ActionButton label="RESTAURAR BACKUP" tone="secondary" onPress={onImport} />
+      </View>
+
+      <View style={commonStyles.card}>
+        <Text style={commonStyles.cardTitle}>Banco no GitHub por usuario</Text>
+        <Text style={[commonStyles.muted, { marginTop: 6 }]}>Use um repositorio seu como banco privado. O token fica salvo somente neste aparelho e nao entra no arquivo de sync.</Text>
+        <View style={styles.syncGrid}>
+          <TextInput value={sync.owner} onChangeText={owner => updateGitHubSync({ owner })} placeholder="usuario ou org" placeholderTextColor={colors.textDim} autoCapitalize="none" style={styles.input} />
+          <TextInput value={sync.repo} onChangeText={repo => updateGitHubSync({ repo })} placeholder="repositorio" placeholderTextColor={colors.textDim} autoCapitalize="none" style={styles.input} />
+        </View>
+        <View style={styles.syncGrid}>
+          <TextInput value={sync.branch} onChangeText={branch => updateGitHubSync({ branch })} placeholder="branch" placeholderTextColor={colors.textDim} autoCapitalize="none" style={styles.input} />
+          <TextInput value={sync.path} onChangeText={path => updateGitHubSync({ path })} placeholder="data/setlog.json" placeholderTextColor={colors.textDim} autoCapitalize="none" style={styles.input} />
+        </View>
+        <TextInput value={githubToken} onChangeText={persistToken} placeholder="GitHub fine-grained token (Contents: Read/Write)" placeholderTextColor={colors.textDim} autoCapitalize="none" secureTextEntry style={styles.input} />
+        {sync.lastSyncedAt ? <Text style={styles.syncStatus}>Ultimo sync: {new Date(sync.lastSyncedAt).toLocaleString('pt-BR')}</Text> : null}
+        {syncStatus ? <Text style={styles.syncStatus}>{syncStatus}</Text> : null}
+        <ActionButton label="ENVIAR BANCO PARA GITHUB" onPress={pushToGitHub} />
+        <ActionButton label="BAIXAR BANCO DO GITHUB" tone="secondary" onPress={pullFromGitHub} />
       </View>
 
       <View style={commonStyles.card}>
@@ -107,6 +165,9 @@ const styles = StyleSheet.create({
   cycleTitle: { color: colors.text, fontSize: 12, fontWeight: '700' },
   cycleCount: { color: colors.muted, fontSize: 10, fontWeight: '800' },
   complete: { color: colors.accent },
+  syncGrid: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  input: { flex: 1, minHeight: 46, borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated, color: colors.text, paddingHorizontal: 12, marginTop: 10, fontSize: 12, fontWeight: '700' },
+  syncStatus: { color: colors.muted, fontSize: 10, marginTop: 10, lineHeight: 15 },
   miniTrack: { height: 4, backgroundColor: colors.elevated, borderRadius: 2, overflow: 'hidden', marginTop: 6 },
   miniFill: { height: '100%', backgroundColor: colors.accent },
 });

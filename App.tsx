@@ -214,7 +214,7 @@ export default function App() {
           onSelectProgram={startProgram}
         />
       )}
-      {activeTab === 'Ciclos' && <CyclesScreen history={data.history} onExport={() => exportBackup(data)} onImport={restoreBackup} />}
+      {activeTab === 'Ciclos' && <CyclesScreen history={data.history} data={data} onDataChange={setData} onExport={() => exportBackup(data)} onImport={restoreBackup} />}
       {activeTab === 'Historico' && (
         <HistoryScreen
           history={data.history}

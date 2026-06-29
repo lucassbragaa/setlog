@@ -205,6 +205,17 @@ export interface PlateInventoryItem {
   count: number;
 }
 
+export interface GitHubSyncSettings {
+  enabled: boolean;
+  owner: string;
+  repo: string;
+  branch: string;
+  path: string;
+  lastSyncedAt?: string;
+  lastSha?: string;
+  lastStatus?: string;
+}
+
 export interface AppSettings {
   unitSystem: UnitSystem;
   weekStart: WeekStart;
@@ -213,6 +224,7 @@ export interface AppSettings {
   defaultRestSeconds: number;
   barWeightKg: number;
   plateInventory: PlateInventoryItem[];
+  githubSync: GitHubSyncSettings;
   theme: 'black-white';
 }
 

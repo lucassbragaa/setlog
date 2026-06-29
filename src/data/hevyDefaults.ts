@@ -29,6 +29,13 @@ export const defaultSettings: AppSettings = {
     { weightKg: 2.5, count: 2 },
     { weightKg: 1.25, count: 2 },
   ],
+  githubSync: {
+    enabled: false,
+    owner: '',
+    repo: 'setlog-data',
+    branch: 'main',
+    path: 'data/setlog.json',
+  },
   theme: 'black-white',
 };
 
