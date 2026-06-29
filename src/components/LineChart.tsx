@@ -1,99 +1,75 @@
-import { useMemo } from 'react';
-import { Text, View } from 'react-native';
-import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
+import { Defs, LinearGradient, Path, Circle, Stop, Svg } from 'react-native-svg';
+import { StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../theme';
+import { colors, radius } from '../theme';
 import type { SeriesPoint } from '../types/training';
 
-interface LineChartProps {
-  data: SeriesPoint[];
-  height?: number;
-  valueLabel?: (v: number) => string;
-  maxPoints?: number;
-  title?: string;
+function pointsFor(data: SeriesPoint[], width: number, height: number) {
+  const values = data.map(item => item.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = Math.max(1, max - min);
+  return data.map((item, index) => ({
+    x: data.length === 1 ? width : (index / (data.length - 1)) * width,
+    y: height - ((item.value - min) / range) * height,
+    item,
+  }));
 }
 
-export function LineChart({ data, height = 140, valueLabel, maxPoints = 50, title }: LineChartProps) {
-  const points = useMemo(() => {
-    if (data.length <= maxPoints) return data;
-    const step = Math.ceil(data.length / maxPoints);
-    return data.filter((_, i) => i % step === 0 || i === data.length - 1);
-  }, [data, maxPoints]);
-
-  const padH = 12;
-  const padV = 16;
-  const chartW = 320;
-  const chartH = height - padV * 2;
-
-  const values = points.map(p => p.value);
-  const minVal = Math.min(...values);
-  const maxVal = Math.max(...values);
-  const range = maxVal - minVal || 1;
-
-  const coords = points.map((p, i) => ({
-    x: padH + (i / Math.max(points.length - 1, 1)) * (chartW - padH * 2),
-    y: padV + chartH - ((p.value - minVal) / range) * chartH,
-    point: p,
-  }));
-
-  const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
-  const areaPath = linePath
-    + ` L${coords[coords.length - 1].x.toFixed(1)},${(padV + chartH).toFixed(1)}`
-    + ` L${coords[0].x.toFixed(1)},${(padV + chartH).toFixed(1)} Z`;
-
-  const last = coords[coords.length - 1];
-
+export function LineChart({ title, data, valueLabel, height = 150 }: {
+  title: string;
+  data: SeriesPoint[];
+  valueLabel: (value: number) => string;
+  height?: number;
+}) {
+  const width = 320;
+  const chartHeight = height;
   if (data.length < 2) {
     return (
-      <View style={{ marginTop: 8 }}>
-        {title ? <Text style={chartStyles.title}>{title}</Text> : null}
-        <View style={{ height, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={chartStyles.empty}>Dados insuficientes para o gráfico</Text>
-        </View>
+      <View style={styles.card}>
+        <Text style={styles.title}>{title}</Text>
+        <View style={styles.empty}><Text style={styles.emptyText}>Precisa de pelo menos 2 logs para desenhar a tendencia.</Text></View>
       </View>
     );
   }
 
-  const xLabels: { x: number; label: string }[] = [];
-  const maxLabels = 5;
-  if (coords.length >= 2) {
-    const step = Math.max(1, Math.floor((coords.length - 1) / (maxLabels - 1)));
-    for (let i = 0; i < coords.length; i += step) {
-      xLabels.push({ x: coords[i].x, label: coords[i].point.label });
-    }
-    const last2 = coords[coords.length - 1];
-    if (!xLabels.find(l => l.x === last2.x)) xLabels.push({ x: last2.x, label: last2.point.label });
-  }
+  const points = pointsFor(data, width, chartHeight - 24);
+  const line = points.map((point, index) => (index === 0 ? 'M ' : 'L ') + point.x + ' ' + point.y).join(' ');
+  const area = line + ' L ' + points[points.length - 1].x + ' ' + chartHeight + ' L 0 ' + chartHeight + ' Z';
+  const last = points[points.length - 1];
+  const labelEvery = Math.max(1, Math.ceil(data.length / 5));
 
   return (
-    <View style={{ marginTop: 8 }}>
-      {title ? <Text style={chartStyles.title}>{title}</Text> : null}
-      <Svg width="100%" height={height} viewBox={`0 0 ${chartW} ${height}`}>
+    <View style={styles.card}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.value}>{valueLabel(data[data.length - 1].value)}</Text>
+      </View>
+      <Svg width="100%" height={chartHeight} viewBox={'0 0 ' + width + ' ' + chartHeight}>
         <Defs>
-          <LinearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={colors.accent} stopOpacity="0.3" />
+          <LinearGradient id="area" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={colors.accent} stopOpacity="0.26" />
             <Stop offset="1" stopColor={colors.accent} stopOpacity="0" />
           </LinearGradient>
         </Defs>
-        <Path d={areaPath} fill="url(#areaGrad)" />
-        <Path d={linePath} stroke={colors.accent} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-        {last && <Circle cx={last.x} cy={last.y} r="4" fill={colors.accent} />}
+        <Path d={area} fill="url(#area)" />
+        <Path d={line} fill="none" stroke={colors.accent} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+        <Circle cx={last.x} cy={last.y} r={5} fill={colors.background} stroke={colors.accent} strokeWidth={2.5} />
       </Svg>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: padH, marginTop: 2 }}>
-        {xLabels.map((l, i) => (
-          <Text key={i} style={[chartStyles.axisLabel, { maxWidth: 50, textAlign: i === 0 ? 'left' : i === xLabels.length - 1 ? 'right' : 'center' }]}>{l.label}</Text>
-        ))}
+      <View style={styles.labels}>
+        {data.map((item, index) => index % labelEvery === 0 || index === data.length - 1 ? <Text key={item.date + index} style={styles.label}>{item.label}</Text> : null)}
       </View>
-      {valueLabel && last && (
-        <Text style={chartStyles.lastValue}>{valueLabel(last.point.value)}</Text>
-      )}
     </View>
   );
 }
 
-const chartStyles = {
-  title: { color: colors.muted, fontSize: 9, fontWeight: '800' as const, textTransform: 'uppercase' as const, marginBottom: 4 },
-  axisLabel: { color: colors.textDim, fontSize: 8, fontWeight: '600' as const },
-  lastValue: { color: colors.accent, fontSize: 10, fontWeight: '800' as const, textAlign: 'right' as const, marginTop: 2 },
-  empty: { color: colors.textDim, fontSize: 11, textAlign: 'center' as const },
-};
+const styles = StyleSheet.create({
+  card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 14, marginTop: 14 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginBottom: 8 },
+  title: { color: colors.text, fontSize: 15, fontWeight: '900' },
+  value: { color: colors.text, fontSize: 13, fontWeight: '900' },
+  labels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: -4 },
+  label: { color: colors.textDim, fontSize: 9, fontWeight: '700' },
+  empty: { minHeight: 120, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, justifyContent: 'center', alignItems: 'center', padding: 14, marginTop: 10 },
+  emptyText: { color: colors.muted, fontSize: 12, textAlign: 'center', lineHeight: 18 },
+});

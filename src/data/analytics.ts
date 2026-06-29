@@ -1,228 +1,207 @@
-import { estimated1Rm, setVolumeKg } from './setMetrics';
-import type {
-  CalendarDay,
-  ExerciseBlock,
-  ExercisePR,
-  LoggedSet,
-  SeriesPoint,
-  StreakInfo,
-  Timeframe,
-  WeeklyVolumeSummary,
-  WorkoutSession,
-} from '../types/training';
+import { estimated1Rm, primaryRepetitions, setVolumeKg } from './setMetrics';
+import type { CalendarDay, ExerciseBlock, ExercisePR, LoggedSet, SeriesPoint, Timeframe, WeeklyVolumeSummary, WorkoutSession } from '../types/training';
 
-export function normalizeExerciseKey(exercise: Pick<ExerciseBlock, 'exerciseId' | 'exerciseName'>): string {
-  return (exercise.exerciseId || exercise.exerciseName)
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-}
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+type ExerciseLike = Pick<ExerciseBlock, 'exerciseId' | 'exerciseName'>;
+
+type ExerciseMetric = 'e1rm' | 'volume' | 'weight';
 
 function workingSets(exercise: ExerciseBlock): LoggedSet[] {
   return exercise.sets.filter(set => set.type !== 'warmup' && set.type !== 'approach');
 }
 
-function localDateString(iso: string): string {
-  const d = new Date(iso);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+function startOfLocalDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  d.setDate(d.getDate() + days);
-  return localDateString(d.toISOString());
+function dateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return year + '-' + month + '-' + day;
 }
 
-function startOfWeekMonday(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  const dow = d.getDay();
-  const diff = dow === 0 ? -6 : 1 - dow;
-  d.setDate(d.getDate() + diff);
-  return localDateString(d.toISOString());
+function weekStart(date: Date): Date {
+  const day = startOfLocalDay(date);
+  const offset = (day.getDay() + 6) % 7;
+  day.setDate(day.getDate() - offset);
+  return day;
+}
+
+export function normalizeExerciseKey(exercise: ExerciseLike): string {
+  return (exercise.exerciseId || exercise.exerciseName)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+export function completedSessions(history: WorkoutSession[]): WorkoutSession[] {
+  return history.filter(session => Boolean(session.endedAt)).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 }
 
 export function filterByTimeframe(sessions: WorkoutSession[], timeframe: Timeframe): WorkoutSession[] {
   if (timeframe === 'all') return sessions;
-  const days = timeframe === '1m' ? 30 : timeframe === '3m' ? 90 : timeframe === '6m' ? 180 : 365;
+  const months = timeframe === '1m' ? 1 : timeframe === '3m' ? 3 : timeframe === '6m' ? 6 : 12;
   const cutoff = new Date();
-  cutoff.setDate(cutoff.getDate() - days);
-  const cutoffIso = cutoff.toISOString();
-  return sessions.filter(s => s.startedAt >= cutoffIso);
+  cutoff.setMonth(cutoff.getMonth() - months);
+  return sessions.filter(session => new Date(session.startedAt) >= cutoff);
 }
 
 export function computePRs(history: WorkoutSession[]): Map<string, ExercisePR> {
-  const map = new Map<string, ExercisePR>();
-  const completed = history.filter(s => s.endedAt);
-  for (const session of completed) {
-    for (const exercise of session.exercises) {
-      const key = normalizeExerciseKey(exercise);
+  const prs = new Map<string, ExercisePR>();
+  completedSessions(history).forEach(session => {
+    session.exercises.forEach(exercise => {
       const sets = workingSets(exercise);
-      if (sets.length === 0) continue;
+      if (sets.length === 0) return;
+      const key = normalizeExerciseKey(exercise);
       const bestE1rm = sets.reduce((best, set) => Math.max(best, estimated1Rm(set)), 0);
       const bestWeight = sets.reduce((best, set) => Math.max(best, set.loadKg), 0);
-      const sessionVolume = sets.reduce((total, set) => total + setVolumeKg(set), 0);
-      const existing = map.get(key);
-      if (!existing) {
-        map.set(key, { exerciseKey: key, exerciseName: exercise.exerciseName, bestE1rm, bestWeight, bestVolume: sessionVolume, achievedAt: session.startedAt });
-      } else {
-        map.set(key, {
-          ...existing,
-          bestE1rm: Math.max(existing.bestE1rm, bestE1rm),
-          bestWeight: Math.max(existing.bestWeight, bestWeight),
-          bestVolume: Math.max(existing.bestVolume, sessionVolume),
-          achievedAt: bestE1rm > existing.bestE1rm ? session.startedAt : existing.achievedAt,
+      const bestVolume = sets.reduce((total, set) => total + setVolumeKg(set), 0);
+      const current = prs.get(key);
+      if (!current || bestE1rm > current.bestE1rm || bestVolume > current.bestVolume) {
+        prs.set(key, {
+          exerciseKey: key,
+          exerciseName: exercise.exerciseName,
+          bestE1rm,
+          bestWeight,
+          bestVolume,
+          achievedAt: session.startedAt,
         });
       }
-    }
-  }
-  return map;
-}
-
-export function exerciseTimeSeries(
-  history: WorkoutSession[],
-  exerciseKey: string,
-  metric: 'e1rm' | 'volume' | 'weight',
-  timeframe: Timeframe,
-): SeriesPoint[] {
-  const filtered = filterByTimeframe(history.filter(s => s.endedAt), timeframe);
-  const points: SeriesPoint[] = [];
-  for (const session of [...filtered].sort((a, b) => a.startedAt.localeCompare(b.startedAt))) {
-    const matched = session.exercises.filter(e => normalizeExerciseKey(e) === exerciseKey);
-    const sets = matched.flatMap(workingSets);
-    if (sets.length === 0) continue;
-    let value: number;
-    if (metric === 'e1rm') value = sets.reduce((best, set) => Math.max(best, estimated1Rm(set)), 0);
-    else if (metric === 'volume') value = sets.reduce((total, set) => total + setVolumeKg(set), 0);
-    else value = sets.reduce((best, set) => Math.max(best, set.loadKg), 0);
-    const d = new Date(session.startedAt);
-    points.push({
-      date: session.startedAt,
-      value,
-      label: d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
     });
-  }
-  return points;
+  });
+  return prs;
 }
 
-export function workoutHeatmap(history: WorkoutSession[], weeks: number): CalendarDay[][] {
-  const completed = history.filter(s => s.endedAt);
-  const volumeByDate = new Map<string, { count: number; volume: number }>();
-  for (const session of completed) {
-    const date = localDateString(session.startedAt);
-    const sessionVolume = session.exercises.flatMap(workingSets).reduce((total, set) => total + setVolumeKg(set), 0);
-    const existing = volumeByDate.get(date);
-    if (existing) {
-      volumeByDate.set(date, { count: existing.count + 1, volume: existing.volume + sessionVolume });
-    } else {
-      volumeByDate.set(date, { count: 1, volume: sessionVolume });
-    }
-  }
-
-  const today = localDateString(new Date().toISOString());
-  const endWeek = startOfWeekMonday(today);
-  const startDate = addDays(endWeek, -(weeks - 1) * 7);
-
-  const result: CalendarDay[][] = [];
-  for (let w = 0; w < weeks; w++) {
-    const week: CalendarDay[] = [];
-    for (let d = 0; d < 7; d++) {
-      const date = addDays(startDate, w * 7 + d);
-      const info = volumeByDate.get(date);
-      week.push({
-        date,
-        hasWorkout: Boolean(info),
-        sessionCount: info?.count ?? 0,
-        totalVolume: info?.volume ?? 0,
-      });
-    }
-    result.push(week);
-  }
-  return result;
+export function exerciseTimeSeries(history: WorkoutSession[], key: string, metric: ExerciseMetric, timeframe: Timeframe): SeriesPoint[] {
+  return filterByTimeframe(completedSessions(history), timeframe)
+    .map(session => {
+      const matching = session.exercises.filter(exercise => normalizeExerciseKey(exercise) === key);
+      const sets = matching.flatMap(workingSets);
+      if (sets.length === 0) return null;
+      const value = metric === 'volume'
+        ? sets.reduce((total, set) => total + setVolumeKg(set), 0)
+        : metric === 'weight'
+          ? sets.reduce((best, set) => Math.max(best, set.loadKg), 0)
+          : sets.reduce((best, set) => Math.max(best, estimated1Rm(set)), 0);
+      return {
+        date: session.startedAt,
+        value,
+        label: new Date(session.startedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      };
+    })
+    .filter((item): item is SeriesPoint => Boolean(item));
 }
 
-export function computeStreak(history: WorkoutSession[]): StreakInfo {
-  const completed = history.filter(s => s.endedAt);
-  if (completed.length === 0) return { currentStreak: 0, longestStreak: 0, lastWorkoutDate: null };
+export function workoutHeatmap(history: WorkoutSession[], weeks = 12): CalendarDay[][] {
+  const map = new Map<string, CalendarDay>();
+  completedSessions(history).forEach(session => {
+    const key = dateKey(new Date(session.startedAt));
+    const current = map.get(key) ?? { date: key, hasWorkout: false, sessionCount: 0, totalVolume: 0 };
+    const volume = session.exercises.flatMap(workingSets).reduce((total, set) => total + setVolumeKg(set), 0);
+    map.set(key, { date: key, hasWorkout: true, sessionCount: current.sessionCount + 1, totalVolume: current.totalVolume + volume });
+  });
 
-  const dates = [...new Set(completed.map(s => localDateString(s.startedAt)))].sort().reverse();
-  const today = localDateString(new Date().toISOString());
-  const yesterday = addDays(today, -1);
+  const end = startOfLocalDay(new Date());
+  const start = weekStart(new Date(end.getTime() - (weeks - 1) * 7 * DAY_MS));
+  return Array.from({ length: weeks }, (_, weekIndex) => {
+    return Array.from({ length: 7 }, (_, dayIndex) => {
+      const day = new Date(start);
+      day.setDate(start.getDate() + weekIndex * 7 + dayIndex);
+      const key = dateKey(day);
+      return map.get(key) ?? { date: key, hasWorkout: false, sessionCount: 0, totalVolume: 0 };
+    });
+  });
+}
 
+export function computeStreak(history: WorkoutSession[]) {
+  const days = Array.from(new Set(completedSessions(history).map(session => dateKey(new Date(session.startedAt))))).sort();
+  if (days.length === 0) return { currentStreak: 0, longestStreak: 0, lastWorkoutDate: null };
+
+  let longestStreak = 1;
+  let running = 1;
+  for (let index = 1; index < days.length; index += 1) {
+    const prev = new Date(days[index - 1] + 'T00:00:00');
+    const current = new Date(days[index] + 'T00:00:00');
+    if ((current.getTime() - prev.getTime()) / DAY_MS === 1) running += 1;
+    else running = 1;
+    longestStreak = Math.max(longestStreak, running);
+  }
+
+  const today = dateKey(new Date());
+  const yesterdayDate = new Date();
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  const yesterday = dateKey(yesterdayDate);
   let currentStreak = 0;
-  let longestStreak = 0;
-  let streak = 0;
-  let prev: string | null = null;
-
-  for (const date of [...dates].reverse()) {
-    if (!prev) {
-      streak = 1;
-    } else {
-      const expected = addDays(prev, 1);
-      streak = date === expected ? streak + 1 : 1;
-    }
-    longestStreak = Math.max(longestStreak, streak);
-    prev = date;
-  }
-
-  const lastDate = dates[0] ?? null;
-  if (lastDate === today || lastDate === yesterday) {
-    let cs = 1;
-    for (let i = 1; i < dates.length; i++) {
-      const expected = addDays(dates[i - 1], -1);
-      if (dates[i] === expected) cs++;
+  if (days[days.length - 1] === today || days[days.length - 1] === yesterday) {
+    currentStreak = 1;
+    for (let index = days.length - 2; index >= 0; index -= 1) {
+      const next = new Date(days[index + 1] + 'T00:00:00');
+      const current = new Date(days[index] + 'T00:00:00');
+      if ((next.getTime() - current.getTime()) / DAY_MS === 1) currentStreak += 1;
       else break;
     }
-    currentStreak = cs;
   }
 
-  return { currentStreak, longestStreak, lastWorkoutDate: lastDate };
+  return { currentStreak, longestStreak, lastWorkoutDate: days[days.length - 1] };
 }
 
-export function weeklyVolumeSummary(history: WorkoutSession[], weeks: number): WeeklyVolumeSummary[] {
-  const completed = history.filter(s => s.endedAt);
-  const today = localDateString(new Date().toISOString());
-  const endWeek = startOfWeekMonday(today);
-  const result: WeeklyVolumeSummary[] = [];
-
-  for (let w = weeks - 1; w >= 0; w--) {
-    const weekStart = addDays(endWeek, -w * 7);
-    const weekEnd = addDays(weekStart, 6);
-    const weekSessions = completed.filter(s => {
-      const d = localDateString(s.startedAt);
-      return d >= weekStart && d <= weekEnd;
-    });
-    const totalVolume = weekSessions.flatMap(s => s.exercises.flatMap(workingSets)).reduce((total, set) => total + setVolumeKg(set), 0);
-    const setCount = weekSessions.flatMap(s => s.exercises.flatMap(workingSets)).length;
-    const d = new Date(weekStart + 'T12:00:00');
-    const weekLabel = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-    result.push({ weekStart, weekLabel, totalVolume, sessionCount: weekSessions.length, setCount });
-  }
-  return result;
+export function weeklyVolumeSummary(history: WorkoutSession[], weeks = 8): WeeklyVolumeSummary[] {
+  const now = new Date();
+  const firstWeek = weekStart(new Date(now.getTime() - (weeks - 1) * 7 * DAY_MS));
+  const summaries = Array.from({ length: weeks }, (_, index) => {
+    const start = new Date(firstWeek);
+    start.setDate(firstWeek.getDate() + index * 7);
+    return {
+      weekStart: dateKey(start),
+      weekLabel: start.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      totalVolume: 0,
+      sessionCount: 0,
+      setCount: 0,
+    };
+  });
+  const map = new Map(summaries.map(item => [item.weekStart, item]));
+  completedSessions(history).forEach(session => {
+    const key = dateKey(weekStart(new Date(session.startedAt)));
+    const target = map.get(key);
+    if (!target) return;
+    const sets = session.exercises.flatMap(workingSets);
+    target.totalVolume += sets.reduce((total, set) => total + setVolumeKg(set), 0);
+    target.setCount += sets.length;
+    target.sessionCount += 1;
+  });
+  return summaries;
 }
 
-export function lastSessionSetsForExercise(
-  history: WorkoutSession[],
-  exerciseKey: string,
-  excludeSessionId: string,
-): LoggedSet[] | null {
-  const sessions = [...history]
-    .filter(s => s.endedAt && s.id !== excludeSessionId)
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
-
-  for (const session of sessions) {
-    const matched = session.exercises.filter(e => normalizeExerciseKey(e) === exerciseKey);
-    const sets = matched.flatMap(e => e.sets);
-    if (sets.length > 0) return sets;
-  }
-  return null;
+export function lastSessionSetsForExercise(history: WorkoutSession[], key: string, excludeId?: string): LoggedSet[] {
+  const found = completedSessions(history).slice().reverse().find(session => {
+    if (excludeId && session.id === excludeId) return false;
+    return session.exercises.some(exercise => normalizeExerciseKey(exercise) === key && workingSets(exercise).length > 0);
+  });
+  if (!found) return [];
+  return found.exercises.filter(exercise => normalizeExerciseKey(exercise) === key).flatMap(workingSets);
 }
 
 export function sessionDurationMinutes(session: WorkoutSession): number | null {
   if (!session.endedAt) return null;
-  return Math.round((new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime()) / 60000);
+  return Math.max(1, Math.round((new Date(session.endedAt).getTime() - new Date(session.startedAt).getTime()) / 60000));
+}
+
+export function setCountForSession(session: WorkoutSession): number {
+  return session.exercises.flatMap(workingSets).length;
+}
+
+export function volumeForSession(session: WorkoutSession): number {
+  return session.exercises.flatMap(workingSets).reduce((total, set) => total + setVolumeKg(set), 0);
+}
+
+export function primaryRepsForBestSet(sets: LoggedSet[]): number {
+  const best = sets.reduce<LoggedSet | null>((currentBest, set) => {
+    if (!currentBest) return set;
+    return estimated1Rm(set) > estimated1Rm(currentBest) ? set : currentBest;
+  }, null);
+  return best ? primaryRepetitions(best) : 0;
 }

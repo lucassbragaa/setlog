@@ -18,7 +18,6 @@ export function ActionButton({ label, onPress, tone = 'primary', disabled = fals
       style={({ pressed }) => [
         styles.button,
         tone === 'primary' && styles.primary,
-        tone === 'secondary' && styles.secondary,
         tone === 'danger' && styles.danger,
         disabled && styles.disabled,
         pressed && !disabled && styles.pressed,
@@ -31,7 +30,7 @@ export function ActionButton({ label, onPress, tone = 'primary', disabled = fals
 
 export function Chip({ label, selected = false, onPress }: { label: string; selected?: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, selected && styles.chipSelected]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && styles.pressed]}>
       <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{label}</Text>
     </Pressable>
   );
@@ -44,13 +43,9 @@ export function Stepper({ label, value, suffix = '', step = 1, min = 0, max = 99
     <View style={styles.stepper}>
       <Text style={styles.stepLabel}>{label}</Text>
       <View style={styles.stepRow}>
-        <Pressable style={styles.stepBtn} onPress={() => onChange(Math.max(min, value - step))}>
-          <Text style={styles.stepAction}>−</Text>
-        </Pressable>
+        <Pressable hitSlop={8} onPress={() => onChange(Math.max(min, value - step))}><Text style={styles.stepAction}>-</Text></Pressable>
         <Text style={styles.stepValue}>{value}{suffix}</Text>
-        <Pressable style={styles.stepBtn} onPress={() => onChange(Math.min(max, value + step))}>
-          <Text style={styles.stepAction}>+</Text>
-        </Pressable>
+        <Pressable hitSlop={8} onPress={() => onChange(Math.min(max, value + step))}><Text style={styles.stepAction}>+</Text></Pressable>
       </View>
     </View>
   );
@@ -70,14 +65,12 @@ export function ModalShell({ visible, title, onClose, children }: PropsWithChild
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <Pressable style={styles.backdropDismiss} onPress={onClose} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={styles.modal}>
-          <View style={styles.dragHandle} />
+          <View style={styles.handle} />
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{title}</Text>
-            <Pressable onPress={onClose} style={styles.closeBtn}>
-              <Text style={styles.close}>×</Text>
-            </Pressable>
+            <Pressable onPress={onClose} style={styles.closeButton}><Text style={styles.close}>x</Text></Pressable>
           </View>
           {children}
         </View>
@@ -128,14 +121,14 @@ export function DateEditor({ value, onChange, label = 'DATA DO TREINO' }: {
         <Text style={styles.dateEdit}>ALTERAR</Text>
       </Pressable>
       <ModalShell visible={visible} title="Alterar data do treino" onClose={() => setVisible(false)}>
-        <Text style={styles.dateHelp}>O horário e os intervalos do treino serão preservados.</Text>
+        <Text style={styles.dateHelp}>O horario e os intervalos do treino serao preservados.</Text>
         <View style={styles.dateShortcuts}>
           <Chip label="Hoje" onPress={() => chooseRelativeDate(0)} />
           <Chip label="Ontem" onPress={() => chooseRelativeDate(1)} />
         </View>
         <View style={styles.dateSteppers}>
           <Stepper label="DIA" value={Math.min(day, daysInMonth(year, month))} min={1} max={daysInMonth(year, month)} onChange={setDay} />
-          <Stepper label="MÊS" value={month} min={1} max={12} onChange={setMonth} />
+          <Stepper label="MES" value={month} min={1} max={12} onChange={setMonth} />
           <Stepper label="ANO" value={year} min={2000} max={new Date().getFullYear() + 1} onChange={setYear} />
         </View>
         <ActionButton label="SALVAR DATA" onPress={save} />
@@ -145,66 +138,47 @@ export function DateEditor({ value, onChange, label = 'DATA DO TREINO' }: {
 }
 
 export const commonStyles = StyleSheet.create({
-  screen: { padding: 20, paddingTop: 24, paddingBottom: 130 },
+  screen: { padding: 20, paddingTop: 24, paddingBottom: 125 },
   card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 16, marginTop: 14 },
-  cardTitle: { color: colors.text, fontWeight: '800', fontSize: type.lg },
-  muted: { color: colors.muted, fontSize: type.md, lineHeight: 20 },
+  cardTitle: { color: colors.text, fontWeight: '900', fontSize: type.lg },
+  muted: { color: colors.muted, fontSize: type.sm, lineHeight: 18 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
 });
 
 const styles = StyleSheet.create({
-  button: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    marginTop: 10,
-    backgroundColor: colors.elevated,
-  },
-  secondary: { backgroundColor: colors.elevated, borderColor: colors.border },
+  pressed: { opacity: 0.72 },
+  button: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 13, paddingHorizontal: 14, alignItems: 'center', marginTop: 10, backgroundColor: colors.elevated },
   primary: { backgroundColor: colors.accent, borderColor: colors.accent },
   danger: { borderColor: colors.dangerBorder, backgroundColor: colors.dangerSoft },
-  disabled: { opacity: 0.35 },
-  pressed: { opacity: 0.75 },
-  buttonText: { color: colors.text, fontSize: type.sm, fontWeight: '800', letterSpacing: 0.3 },
+  disabled: { opacity: 0.4 },
+  buttonText: { color: colors.text, fontSize: type.sm, fontWeight: '900', letterSpacing: 0.8 },
   primaryText: { color: colors.background },
   dangerText: { color: colors.danger },
-  chip: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    backgroundColor: colors.elevated,
-  },
-  chipSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  chipText: { color: colors.muted, fontSize: type.sm, fontWeight: '600' },
-  chipTextSelected: { color: colors.accent, fontWeight: '700' },
+  chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.elevated },
+  chipSelected: { borderColor: colors.accent, backgroundColor: colors.accent },
+  chipText: { color: colors.muted, fontSize: type.sm, fontWeight: '700' },
+  chipTextSelected: { color: colors.background, fontWeight: '900' },
   stepper: { flex: 1, backgroundColor: colors.elevated, borderRadius: radius.md, padding: 10, borderWidth: 1, borderColor: colors.border },
-  stepLabel: { color: colors.muted, fontSize: 8, fontWeight: '700', textAlign: 'center', letterSpacing: 0.5 },
+  stepLabel: { color: colors.muted, fontSize: type.xs, fontWeight: '900', textAlign: 'center', letterSpacing: 0.8 },
   stepRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
-  stepBtn: { padding: 2 },
-  stepAction: { color: colors.accent, fontSize: 20, paddingHorizontal: 4, fontWeight: '300' },
-  stepValue: { color: colors.text, fontWeight: '800', fontSize: type.lg },
+  stepAction: { color: colors.accent, fontSize: 24, fontWeight: '700', paddingHorizontal: 6 },
+  stepValue: { color: colors.text, fontWeight: '900', fontSize: type.lg },
   titleBlock: { marginBottom: 8 },
-  eyebrow: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1.6, marginBottom: 6, textTransform: 'uppercase' },
-  title: { color: colors.text, fontSize: type.xxl, lineHeight: 32, fontWeight: '800' },
-  subtitle: { color: colors.muted, marginTop: 5, fontSize: type.md, lineHeight: 20 },
-  backdrop: { flex: 1, backgroundColor: '#000000BB', justifyContent: 'flex-end' },
-  backdropDismiss: { flex: 1 },
-  modal: { maxHeight: '85%', backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 20, paddingTop: 12, borderColor: colors.border, borderWidth: 1, borderBottomWidth: 0 },
-  dragHandle: { width: 36, height: 4, backgroundColor: colors.border, borderRadius: radius.full, alignSelf: 'center', marginBottom: 14 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  modalTitle: { color: colors.text, fontSize: type.xl, fontWeight: '800' },
-  closeBtn: { width: 32, height: 32, borderRadius: radius.full, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center' },
-  close: { color: colors.muted, fontSize: 22, lineHeight: 24 },
-  dateButton: { minHeight: 58, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 14, paddingVertical: 11, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, backgroundColor: colors.elevated },
-  dateLabel: { color: colors.muted, fontSize: 8, fontWeight: '800', letterSpacing: 1 },
-  dateValue: { color: colors.text, fontSize: type.lg, fontWeight: '800', marginTop: 4 },
-  dateEdit: { color: colors.accent, fontSize: type.xs, fontWeight: '800', letterSpacing: 0.5 },
+  eyebrow: { color: colors.muted, fontSize: type.sm, fontWeight: '900', letterSpacing: 1.4, marginBottom: 6 },
+  title: { color: colors.text, fontSize: type.xxl, lineHeight: 32, fontWeight: '900', letterSpacing: -0.4 },
+  subtitle: { color: colors.muted, marginTop: 5, fontSize: type.md, lineHeight: 19 },
+  backdrop: { flex: 1, backgroundColor: '#000000CC', justifyContent: 'flex-end' },
+  modal: { maxHeight: '84%', backgroundColor: colors.card, borderTopLeftRadius: radius.xl, borderTopRightRadius: radius.xl, padding: 20, borderColor: colors.border, borderWidth: 1 },
+  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: colors.border, alignSelf: 'center', marginBottom: 14 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  modalTitle: { color: colors.text, fontSize: type.xl, fontWeight: '900' },
+  closeButton: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  close: { color: colors.muted, fontSize: 18, fontWeight: '900' },
+  dateButton: { minHeight: 58, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 13, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, backgroundColor: colors.elevated },
+  dateLabel: { color: colors.muted, fontSize: type.xs, fontWeight: '900', letterSpacing: 1 },
+  dateValue: { color: colors.text, fontSize: type.lg, fontWeight: '900', marginTop: 4 },
+  dateEdit: { color: colors.accent, fontSize: type.xs, fontWeight: '900' },
   dateHelp: { color: colors.muted, fontSize: type.sm, lineHeight: 17 },
   dateShortcuts: { flexDirection: 'row', gap: 8, marginTop: 12 },
   dateSteppers: { flexDirection: 'row', gap: 8, marginTop: 12 },

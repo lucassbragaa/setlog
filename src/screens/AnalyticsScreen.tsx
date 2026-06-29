@@ -1,63 +1,62 @@
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View, type DimensionValue } from 'react-native';
 
 import { CalendarHeatmap } from '../components/CalendarHeatmap';
 import { LineChart } from '../components/LineChart';
 import { PRCard } from '../components/PRCard';
 import {
+  completedSessions,
   computePRs,
   computeStreak,
   exerciseTimeSeries,
   filterByTimeframe,
   normalizeExerciseKey,
+  setCountForSession,
+  volumeForSession,
   weeklyVolumeSummary,
   workoutHeatmap,
 } from '../data/analytics';
 import { PROGRAM_SEQUENCE, type ProgramCode } from '../data/cycles';
 import { estimated1Rm, setVolumeKg } from '../data/setMetrics';
-import { colors } from '../theme';
+import { colors, radius, type } from '../theme';
 import type { ExerciseBlock, LoggedSet, Timeframe, WorkoutSession } from '../types/training';
 import { Chip, commonStyles, ScreenTitle } from '../ui';
 
 type Mode = 'overview' | 'program' | 'exercise';
+type SessionStats = { cycle: number; volume: number; sets: number; averageRir: number; bestE1rm: number; session: WorkoutSession };
+type ExerciseStats = { key: string; dateLabel: string; programLabel: string; volume: number; sets: number; averageRir: number; bestE1rm: number; bestLoad: number; session: WorkoutSession };
 
-type SessionStats = {
-  cycle: number;
-  volume: number;
-  sets: number;
-  averageRir: number;
-  bestE1rm: number;
-  session: WorkoutSession;
-};
+const timeframes: { value: Timeframe; label: string }[] = [
+  { value: '1m', label: '1M' },
+  { value: '3m', label: '3M' },
+  { value: '6m', label: '6M' },
+  { value: '1y', label: '1A' },
+  { value: 'all', label: 'Tudo' },
+];
 
 function workingSets(exercise: ExerciseBlock) {
   return exercise.sets.filter(set => set.type !== 'warmup' && set.type !== 'approach');
 }
 
 function averageRir(sets: LoggedSet[]) {
-  const setsWithRir = sets.filter(set => set.rir !== undefined);
-  return setsWithRir.length ? setsWithRir.reduce((total, set) => total + (set.rir ?? 0), 0) / setsWithRir.length : 0;
+  const withRir = sets.filter(set => set.rir !== undefined);
+  return withRir.length ? withRir.reduce((total, set) => total + (set.rir ?? 0), 0) / withRir.length : 0;
 }
 
 function statsForSets(sets: LoggedSet[]) {
-  const bestSet = sets.reduce<LoggedSet | null>((best, set) => {
-    if (!best) return set;
-    return estimated1Rm(set) > estimated1Rm(best) ? set : best;
-  }, null);
   return {
     volume: sets.reduce((total, set) => total + setVolumeKg(set), 0),
     sets: sets.length,
     averageRir: averageRir(sets),
     bestE1rm: sets.reduce((best, set) => Math.max(best, estimated1Rm(set)), 0),
     bestLoad: sets.reduce((best, set) => Math.max(best, set.loadKg), 0),
-    bestReps: bestSet ? (bestSet.techniqueDetails?.segmentRepetitions[0] ?? bestSet.repetitions) : 0,
   };
 }
 
 function statsForSession(session: WorkoutSession): SessionStats {
   const sets = session.exercises.flatMap(workingSets);
   const stats = statsForSets(sets);
-  return { cycle: session.cycleNumber ?? 0, volume: stats.volume, sets: stats.sets, averageRir: stats.averageRir, bestE1rm: stats.bestE1rm, session };
+  return { cycle: session.cycleNumber ?? 0, session, ...stats };
 }
 
 function percentChange(current: number, baseline: number): number | null {
@@ -65,131 +64,119 @@ function percentChange(current: number, baseline: number): number | null {
 }
 
 function formatDelta(value: number | null) {
-  if (value === null) return '—';
-  return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+  if (value === null) return '--';
+  return (value >= 0 ? '+' : '') + value.toFixed(1) + '%';
 }
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
 }
 
-const TIMEFRAMES: { label: string; value: Timeframe }[] = [
-  { label: '1M', value: '1m' },
-  { label: '3M', value: '3m' },
-  { label: '6M', value: '6m' },
-  { label: '1A', value: '1y' },
-  { label: 'Tudo', value: 'all' },
-];
-
-function TimeframeSelector({ value, onChange }: { value: Timeframe; onChange: (v: Timeframe) => void }) {
-  return (
-    <View style={styles.timeframeRow}>
-      {TIMEFRAMES.map(tf => (
-        <TouchableOpacity key={tf.value} onPress={() => onChange(tf.value)} style={[styles.tfChip, value === tf.value && styles.tfChipActive]}>
-          <Text style={[styles.tfLabel, value === tf.value && styles.tfLabelActive]}>{tf.label}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
+function kg(value: number) {
+  return Math.round(value).toLocaleString('pt-BR') + ' kg';
 }
 
-function Metric({ label, value, detail, positive }: { label: string; value: string; detail: string; positive?: boolean | null }) {
-  const deltaColor = positive === null || positive === undefined ? colors.textDim : positive ? colors.success : colors.danger;
-  const showArrow = positive !== null && positive !== undefined && detail !== '—';
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 5 }}>
-        {showArrow && <Text style={{ color: deltaColor, fontSize: 9, fontWeight: '800' }}>{positive ? '↑' : '↓'}</Text>}
-        <Text style={[styles.metricDetail, { color: deltaColor }]}>{detail}</Text>
-      </View>
-    </View>
-  );
-}
+export function AnalyticsScreen({ sessions }: { sessions: WorkoutSession[] }) {
+  const [mode, setMode] = useState<Mode>('overview');
+  const [selected, setSelected] = useState<ProgramCode>('A1');
+  const [timeframe, setTimeframe] = useState<Timeframe>('6m');
+  const [selectedExerciseKey, setSelectedExerciseKey] = useState('');
 
-function deltaPositive(value: number | null): boolean | null {
-  if (value === null) return null;
-  return value >= 0;
-}
-
-function OverviewTab({ sessions }: { sessions: WorkoutSession[] }) {
-  const heatmapData = useMemo(() => workoutHeatmap(sessions, 12), [sessions]);
-  const streak = useMemo(() => computeStreak(sessions), [sessions]);
+  const completed = useMemo(() => completedSessions(sessions), [sessions]);
   const prs = useMemo(() => computePRs(sessions), [sessions]);
+  const heatmap = useMemo(() => workoutHeatmap(sessions, 12), [sessions]);
   const weekly = useMemo(() => weeklyVolumeSummary(sessions, 8), [sessions]);
-  const completed = sessions.filter(s => s.endedAt);
+  const streak = useMemo(() => computeStreak(sessions), [sessions]);
 
-  const totalVolume = completed.reduce((total, s) => total + s.exercises.flatMap(workingSets).reduce((t, set) => t + setVolumeKg(set), 0), 0);
-  const topExercises = useMemo(() => {
-    const byKey = new Map<string, { name: string; volume: number }>();
-    for (const s of completed) {
-      for (const ex of s.exercises) {
-        const key = normalizeExerciseKey(ex);
-        const vol = workingSets(ex).reduce((t, set) => t + setVolumeKg(set), 0);
-        const cur = byKey.get(key);
-        byKey.set(key, { name: ex.exerciseName, volume: (cur?.volume ?? 0) + vol });
-      }
-    }
-    return [...byKey.values()].sort((a, b) => b.volume - a.volume).slice(0, 5);
+  const exerciseOptions = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; count: number; volume: number }>();
+    completed.forEach(session => {
+      session.exercises.forEach(exercise => {
+        const sets = workingSets(exercise);
+        if (sets.length === 0) return;
+        const key = normalizeExerciseKey(exercise);
+        const current = map.get(key);
+        map.set(key, {
+          key,
+          name: current?.name ?? exercise.exerciseName,
+          count: (current?.count ?? 0) + 1,
+          volume: (current?.volume ?? 0) + sets.reduce((total, set) => total + setVolumeKg(set), 0),
+        });
+      });
+    });
+    return Array.from(map.values()).sort((a, b) => b.volume - a.volume || a.name.localeCompare(b.name, 'pt-BR'));
   }, [completed]);
 
-  const maxTopVol = topExercises[0]?.volume ?? 1;
-  const maxWeekVol = Math.max(...weekly.map(w => w.totalVolume), 1);
+  const activeExerciseKey = selectedExerciseKey || exerciseOptions[0]?.key || '';
+  const activeExerciseName = exerciseOptions.find(item => item.key === activeExerciseKey)?.name ?? 'Exercicio';
+
+  return (
+    <ScrollView contentContainerStyle={commonStyles.screen} showsVerticalScrollIndicator={false}>
+      <ScreenTitle eyebrow="SETGRAPH" title="Analises" subtitle="Volume, PRs, frequencia e progresso por treino ou exercicio." />
+      <View style={styles.modeTabs}>
+        <Chip label="Geral" selected={mode === 'overview'} onPress={() => setMode('overview')} />
+        <Chip label="Por treino" selected={mode === 'program'} onPress={() => setMode('program')} />
+        <Chip label="Por exercicio" selected={mode === 'exercise'} onPress={() => setMode('exercise')} />
+      </View>
+      {mode === 'overview' ? <OverviewTab completed={completed} heatmap={heatmap} weekly={weekly} streak={streak} exerciseOptions={exerciseOptions} prs={prs} /> : null}
+      {mode === 'program' ? <ProgramTab selected={selected} setSelected={setSelected} sessions={sessions} /> : null}
+      {mode === 'exercise' ? <ExerciseTab sessions={sessions} exerciseOptions={exerciseOptions} activeExerciseKey={activeExerciseKey} activeExerciseName={activeExerciseName} setSelectedExerciseKey={setSelectedExerciseKey} timeframe={timeframe} setTimeframe={setTimeframe} prs={prs} /> : null}
+    </ScrollView>
+  );
+}
+
+function OverviewTab({ completed, heatmap, weekly, streak, exerciseOptions, prs }: {
+  completed: WorkoutSession[];
+  heatmap: ReturnType<typeof workoutHeatmap>;
+  weekly: ReturnType<typeof weeklyVolumeSummary>;
+  streak: ReturnType<typeof computeStreak>;
+  exerciseOptions: { key: string; name: string; count: number; volume: number }[];
+  prs: Map<string, ReturnType<typeof computePRs> extends Map<string, infer PR> ? PR : never>;
+}) {
+  const totalVolume = completed.reduce((total, session) => total + volumeForSession(session), 0);
+  const totalSets = completed.reduce((total, session) => total + setCountForSession(session), 0);
+  const bestPr = Array.from(prs.values()).sort((a, b) => b.bestE1rm - a.bestE1rm)[0];
+  const maxWeekly = Math.max(...weekly.map(item => item.totalVolume), 1);
 
   return (
     <>
-      <View style={commonStyles.card}>
-        <Text style={commonStyles.cardTitle}>Frequência · 12 semanas</Text>
-        <View style={{ marginTop: 12 }}>
-          <CalendarHeatmap data={heatmapData} streak={streak.currentStreak} />
-        </View>
-      </View>
-
+      <CalendarHeatmap weeks={heatmap} />
       <View style={styles.grid}>
-        <Metric label="TREINOS TOTAL" value={String(completed.length)} detail="sessões finalizadas" />
-        <Metric label="VOLUME TOTAL" value={(totalVolume / 1000).toFixed(1) + ' t'} detail="toneladas movidas" />
-        <Metric label="STREAK ATUAL" value={streak.currentStreak + ' dias'} detail={'maior: ' + streak.longestStreak} />
-        <Metric label="EXERCÍCIOS" value={String(prs.size)} detail="no histórico" />
+        <Metric label="TREINOS" value={String(completed.length)} detail={totalSets + ' sets salvos'} />
+        <Metric label="VOLUME TOTAL" value={kg(totalVolume)} detail="sets de trabalho" />
+        <Metric label="STREAK" value={String(streak.currentStreak)} detail={'maior: ' + streak.longestStreak + ' dias'} />
+        <Metric label="EXERCICIOS" value={String(exerciseOptions.length)} detail="com historico" />
       </View>
-
       <View style={commonStyles.card}>
-        <Text style={commonStyles.cardTitle}>Volume semanal · 8 semanas</Text>
-        {weekly.map(w => (
-          <View key={w.weekStart} style={styles.chartRow}>
-            <Text style={styles.cycleLabel}>{w.weekLabel}</Text>
-            <View style={styles.barTrack}>
-              <View style={[styles.bar, { width: `${Math.max(3, (w.totalVolume / maxWeekVol) * 100)}%` as `${number}%` }]} />
-            </View>
-            <Text style={styles.barValue}>{w.sessionCount > 0 ? Math.round(w.totalVolume).toLocaleString('pt-BR') + ' kg' : '—'}</Text>
-          </View>
-        ))}
-      </View>
-
-      {topExercises.length > 0 && (
-        <View style={commonStyles.card}>
-          <Text style={commonStyles.cardTitle}>Top exercícios por volume</Text>
-          {topExercises.map((ex, i) => (
-            <View key={ex.name} style={styles.chartRow}>
-              <Text style={styles.cycleLabel}>{i + 1}.</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.exerciseName} numberOfLines={1}>{ex.name}</Text>
-                <View style={styles.barTrack}>
-                  <View style={[styles.bar, { width: `${Math.max(3, (ex.volume / maxTopVol) * 100)}%` as `${number}%` }]} />
-                </View>
-              </View>
-              <Text style={styles.barValue}>{(ex.volume / 1000).toFixed(1) + ' t'}</Text>
+        <Text style={commonStyles.cardTitle}>Volume semanal</Text>
+        <View style={styles.weekBars}>
+          {weekly.map(week => (
+            <View key={week.weekStart} style={styles.weekItem}>
+              <View style={styles.weekTrack}><View style={[styles.weekFill, { height: Math.max(4, (week.totalVolume / maxWeekly) * 92) }]} /></View>
+              <Text style={styles.weekLabel}>{week.weekLabel}</Text>
             </View>
           ))}
         </View>
-      )}
+      </View>
+      <View style={commonStyles.card}>
+        <Text style={commonStyles.cardTitle}>Top exercicios por volume</Text>
+        {exerciseOptions.slice(0, 5).map((exercise, index) => (
+          <View key={exercise.key} style={styles.rankRow}>
+            <Text style={styles.rank}>{String(index + 1).padStart(2, '0')}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.exerciseName}>{exercise.name}</Text>
+              <View style={styles.volumeTrack}><View style={[styles.volumeFill, { width: (Math.max(4, (exercise.volume / Math.max(exerciseOptions[0]?.volume ?? 1, 1)) * 100) + '%') as DimensionValue }]} /></View>
+            </View>
+            <Text style={styles.rankValue}>{kg(exercise.volume)}</Text>
+          </View>
+        ))}
+      </View>
+      <PRCard pr={bestPr} />
     </>
   );
 }
 
-function ProgramTab({ sessions }: { sessions: WorkoutSession[] }) {
-  const [selected, setSelected] = useState<ProgramCode>('A1');
-
+function ProgramTab({ selected, setSelected, sessions }: { selected: ProgramCode; setSelected: (code: ProgramCode) => void; sessions: WorkoutSession[] }) {
   const latestSessionByCycle = sessions
     .filter(session => session.endedAt && session.name === selected && session.cycleNumber)
     .reduce<Map<number, WorkoutSession>>((map, session) => {
@@ -198,79 +185,44 @@ function ProgramTab({ sessions }: { sessions: WorkoutSession[] }) {
       if (!current || (session.endedAt ?? '') > (current.endedAt ?? '')) map.set(cycle, session);
       return map;
     }, new Map());
-
-  const selectedSessions = Array.from(latestSessionByCycle.values())
-    .sort((a, b) => (a.cycleNumber ?? 0) - (b.cycleNumber ?? 0))
-    .map(statsForSession);
-
+  const selectedSessions = Array.from(latestSessionByCycle.values()).sort((a, b) => (a.cycleNumber ?? 0) - (b.cycleNumber ?? 0)).map(statsForSession);
   const latest = selectedSessions[selectedSessions.length - 1];
   const previous = selectedSessions[selectedSessions.length - 2];
   const first = selectedSessions[0];
-  const volumeVsPrevious = latest && previous ? percentChange(latest.volume, previous.volume) : null;
-  const volumeVsFirst = latest && first ? percentChange(latest.volume, first.volume) : null;
-  const e1rmVsPrevious = latest && previous ? percentChange(latest.bestE1rm, previous.bestE1rm) : null;
-
-  const previousExercises = new Map((previous?.session.exercises ?? []).map(exercise => [exercise.exerciseName, exercise]));
-
-  const volumeSeries = selectedSessions.map(item => ({
-    date: item.session.startedAt,
-    value: item.volume,
-    label: 'C' + item.cycle,
-  }));
-  const e1rmSeries = selectedSessions.map(item => ({
-    date: item.session.startedAt,
-    value: item.bestE1rm,
-    label: 'C' + item.cycle,
-  }));
+  const previousExercises = new Map((previous?.session.exercises ?? []).map(exercise => [normalizeExerciseKey(exercise), exercise]));
 
   return (
     <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
         {PROGRAM_SEQUENCE.map(code => <Chip key={code} label={code} selected={selected === code} onPress={() => setSelected(code)} />)}
       </ScrollView>
-
       {latest ? (
         <>
           <View style={styles.grid}>
-            <Metric label={`VOLUME · CICLO ${latest.cycle}`} value={latest.volume.toLocaleString('pt-BR') + ' kg'} detail={formatDelta(volumeVsPrevious) + ' vs. ant.'} positive={deltaPositive(volumeVsPrevious)} />
-            <Metric label="MELHOR e1RM" value={latest.bestE1rm.toFixed(1) + ' kg'} detail={formatDelta(e1rmVsPrevious) + ' vs. ant.'} positive={deltaPositive(e1rmVsPrevious)} />
-            <Metric label="RIR MÉDIO" value={latest.averageRir.toFixed(1)} detail={latest.sets + ' sets de trabalho'} />
-            <Metric label="DESDE CICLO 1" value={formatDelta(volumeVsFirst)} detail="variação do volume" positive={deltaPositive(volumeVsFirst)} />
+            <Metric label={'VOLUME C' + latest.cycle} value={kg(latest.volume)} detail={formatDelta(previous ? percentChange(latest.volume, previous.volume) : null) + ' vs anterior'} />
+            <Metric label="MELHOR e1RM" value={latest.bestE1rm.toFixed(1) + ' kg'} detail={formatDelta(previous ? percentChange(latest.bestE1rm, previous.bestE1rm) : null) + ' vs anterior'} />
+            <Metric label="RIR MEDIO" value={latest.averageRir.toFixed(1)} detail={latest.sets + ' sets'} />
+            <Metric label="DESDE C1" value={formatDelta(first ? percentChange(latest.volume, first.volume) : null)} detail="volume acumulado" />
           </View>
-
+          <LineChart title={'Volume do ' + selected + ' por ciclo'} data={selectedSessions.map(item => ({ date: String(item.cycle), label: 'C' + item.cycle, value: item.volume }))} valueLabel={kg} />
+          <LineChart title="Melhor e1RM por ciclo" data={selectedSessions.map(item => ({ date: String(item.cycle), label: 'C' + item.cycle, value: item.bestE1rm }))} valueLabel={value => value.toFixed(1) + ' kg'} />
           <View style={commonStyles.card}>
-            <Text style={commonStyles.cardTitle}>Volume por ciclo</Text>
-            <LineChart
-              data={volumeSeries}
-              valueLabel={v => Math.round(v).toLocaleString('pt-BR') + ' kg'}
-            />
-          </View>
-
-          <View style={commonStyles.card}>
-            <Text style={commonStyles.cardTitle}>Melhor e1RM por ciclo</Text>
-            <LineChart
-              data={e1rmSeries}
-              valueLabel={v => v.toFixed(1) + ' kg'}
-            />
-          </View>
-
-          <View style={commonStyles.card}>
-            <Text style={commonStyles.cardTitle}>Exercícios no ciclo {latest.cycle}</Text>
+            <Text style={commonStyles.cardTitle}>Exercicios no ciclo {latest.cycle}</Text>
             {latest.session.exercises.map(exercise => {
               const currentSets = workingSets(exercise);
               const currentVolume = currentSets.reduce((total, set) => total + setVolumeKg(set), 0);
               const currentE1rm = currentSets.reduce((best, set) => Math.max(best, estimated1Rm(set)), 0);
-              const oldExercise = previousExercises.get(exercise.exerciseName);
+              const oldExercise = previousExercises.get(normalizeExerciseKey(exercise));
               const oldVolume = oldExercise ? workingSets(oldExercise).reduce((total, set) => total + setVolumeKg(set), 0) : 0;
               const delta = percentChange(currentVolume, oldVolume);
               return (
                 <View key={exercise.id} style={styles.exerciseRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.exerciseName}>{exercise.exerciseName}</Text>
-                    <Text style={commonStyles.muted}>{currentSets.length} sets · e1RM {currentE1rm ? currentE1rm.toFixed(1) : '—'} kg</Text>
+                    <Text style={commonStyles.muted}>{currentSets.length} sets - e1RM {currentE1rm ? currentE1rm.toFixed(1) : '--'} kg</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
-                    <Text style={styles.exerciseVolume}>{currentVolume.toLocaleString('pt-BR')} kg</Text>
+                    <Text style={styles.exerciseVolume}>{kg(currentVolume)}</Text>
                     <Text style={[styles.delta, (delta ?? 0) >= 0 ? styles.positive : styles.negative]}>{formatDelta(delta)}</Text>
                   </View>
                 </View>
@@ -278,159 +230,113 @@ function ProgramTab({ sessions }: { sessions: WorkoutSession[] }) {
             })}
           </View>
         </>
-      ) : (
-        <View style={commonStyles.card}>
-          <Text style={commonStyles.cardTitle}>Ainda não há ciclos para {selected}</Text>
-          <Text style={[commonStyles.muted, { marginTop: 8 }]}>Finalize esse treino para o primeiro ponto aparecer.</Text>
-        </View>
-      )}
+      ) : <EmptyCard title={'Sem ciclos concluidos para ' + selected} body="Finalize esse treino para criar o primeiro ponto do grafico." />}
     </>
   );
 }
 
-function ExerciseTab({ sessions }: { sessions: WorkoutSession[] }) {
-  const [selectedExerciseKey, setSelectedExerciseKey] = useState('');
-  const [timeframe, setTimeframe] = useState<Timeframe>('all');
-
-  const exerciseOptions = useMemo(() => {
-    const map = new Map<string, { key: string; name: string; count: number }>();
-    sessions.filter(session => session.endedAt).forEach(session => {
-      session.exercises.forEach(exercise => {
-        if (workingSets(exercise).length === 0) return;
-        const key = normalizeExerciseKey(exercise);
-        const current = map.get(key);
-        map.set(key, { key, name: current?.name ?? exercise.exerciseName, count: (current?.count ?? 0) + 1 });
-      });
-    });
-    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  }, [sessions]);
-
-  const activeExerciseKey = selectedExerciseKey || exerciseOptions[0]?.key || '';
-  const activeExerciseName = exerciseOptions.find(item => item.key === activeExerciseKey)?.name ?? 'Exercício';
-
-  const e1rmSeries = useMemo(() => exerciseTimeSeries(sessions, activeExerciseKey, 'e1rm', timeframe), [sessions, activeExerciseKey, timeframe]);
-  const volumeSeries = useMemo(() => exerciseTimeSeries(sessions, activeExerciseKey, 'volume', timeframe), [sessions, activeExerciseKey, timeframe]);
-
-  const prs = useMemo(() => computePRs(sessions), [sessions]);
-  const pr = prs.get(activeExerciseKey);
-
-  const filteredSessions = useMemo(() => filterByTimeframe(sessions.filter(s => s.endedAt), timeframe), [sessions, timeframe]);
-  const exerciseSeries = useMemo(() => {
+function ExerciseTab({ sessions, exerciseOptions, activeExerciseKey, activeExerciseName, setSelectedExerciseKey, timeframe, setTimeframe, prs }: {
+  sessions: WorkoutSession[];
+  exerciseOptions: { key: string; name: string; count: number; volume: number }[];
+  activeExerciseKey: string;
+  activeExerciseName: string;
+  setSelectedExerciseKey: (key: string) => void;
+  timeframe: Timeframe;
+  setTimeframe: (timeframe: Timeframe) => void;
+  prs: ReturnType<typeof computePRs>;
+}) {
+  const filtered = filterByTimeframe(completedSessions(sessions), timeframe);
+  const exerciseSeries = useMemo<ExerciseStats[]>(() => {
     if (!activeExerciseKey) return [];
-    return filteredSessions
-      .map(session => {
-        const matched = session.exercises.filter(exercise => normalizeExerciseKey(exercise) === activeExerciseKey);
-        const sets = matched.flatMap(workingSets);
-        if (sets.length === 0) return null;
-        const stats = statsForSets(sets);
-        const programLabel = `${session.name}${session.cycleNumber ? ` · C${session.cycleNumber}` : ''}`;
-        return { key: session.id + '-' + activeExerciseKey, dateLabel: formatDate(session.startedAt), programLabel, session, ...stats };
-      })
-      .filter((item): item is NonNullable<typeof item> => Boolean(item))
-      .sort((a, b) => a.session.startedAt.localeCompare(b.session.startedAt));
-  }, [activeExerciseKey, filteredSessions]);
-
+    return filtered.map(session => {
+      const matched = session.exercises.filter(exercise => normalizeExerciseKey(exercise) === activeExerciseKey);
+      const sets = matched.flatMap(workingSets);
+      if (sets.length === 0) return null;
+      const stats = statsForSets(sets);
+      return {
+        key: session.id + '-' + activeExerciseKey,
+        dateLabel: formatDate(session.startedAt),
+        programLabel: session.name + (session.cycleNumber ? ' - C' + session.cycleNumber : ''),
+        session,
+        ...stats,
+      };
+    }).filter((item): item is ExerciseStats => Boolean(item)).sort((a, b) => a.session.startedAt.localeCompare(b.session.startedAt));
+  }, [activeExerciseKey, filtered]);
   const latest = exerciseSeries[exerciseSeries.length - 1];
   const previous = exerciseSeries[exerciseSeries.length - 2];
   const first = exerciseSeries[0];
+  const e1rmSeries = exerciseTimeSeries(sessions, activeExerciseKey, 'e1rm', timeframe);
+  const volumeSeries = exerciseTimeSeries(sessions, activeExerciseKey, 'volume', timeframe);
 
   return (
     <>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filters}>
-        {exerciseOptions.map(option => <Chip key={option.key} label={`${option.name} (${option.count})`} selected={activeExerciseKey === option.key} onPress={() => setSelectedExerciseKey(option.key)} />)}
+        {exerciseOptions.map(option => <Chip key={option.key} label={option.name + ' (' + option.count + ')'} selected={activeExerciseKey === option.key} onPress={() => setSelectedExerciseKey(option.key)} />)}
       </ScrollView>
-
-      <TimeframeSelector value={timeframe} onChange={setTimeframe} />
-
+      <View style={styles.timeframes}>{timeframes.map(item => <Chip key={item.value} label={item.label} selected={timeframe === item.value} onPress={() => setTimeframe(item.value)} />)}</View>
       {latest ? (
         <>
           <View style={styles.grid}>
-            <Metric label="ÚLTIMO VOLUME" value={latest.volume.toLocaleString('pt-BR') + ' kg'} detail={formatDelta(previous ? percentChange(latest.volume, previous.volume) : null) + ' vs. ant.'} positive={deltaPositive(previous ? percentChange(latest.volume, previous.volume) : null)} />
-            <Metric label="MELHOR e1RM" value={latest.bestE1rm.toFixed(1) + ' kg'} detail={formatDelta(previous ? percentChange(latest.bestE1rm, previous.bestE1rm) : null) + ' vs. ant.'} positive={deltaPositive(previous ? percentChange(latest.bestE1rm, previous.bestE1rm) : null)} />
-            <Metric label="MELHOR CARGA" value={latest.bestLoad.toFixed(1) + ' kg'} detail={`${latest.bestReps} reps no melhor set`} />
-            <Metric label="DESDE O INÍCIO" value={formatDelta(first ? percentChange(latest.volume, first.volume) : null)} detail="variação do volume" positive={deltaPositive(first ? percentChange(latest.volume, first.volume) : null)} />
+            <Metric label="ULTIMO VOLUME" value={kg(latest.volume)} detail={formatDelta(previous ? percentChange(latest.volume, previous.volume) : null) + ' vs anterior'} />
+            <Metric label="MELHOR e1RM" value={latest.bestE1rm.toFixed(1) + ' kg'} detail={formatDelta(previous ? percentChange(latest.bestE1rm, previous.bestE1rm) : null) + ' vs anterior'} />
+            <Metric label="MELHOR CARGA" value={latest.bestLoad.toFixed(1) + ' kg'} detail={latest.sets + ' sets no ultimo log'} />
+            <Metric label="DESDE O 1o LOG" value={formatDelta(first ? percentChange(latest.volume, first.volume) : null)} detail="volume do exercicio" />
           </View>
-
-          {pr && <PRCard pr={pr} />}
-
+          <PRCard pr={prs.get(activeExerciseKey)} />
+          <LineChart title={'e1RM - ' + activeExerciseName} data={e1rmSeries} valueLabel={value => value.toFixed(1) + ' kg'} />
+          <LineChart title={'Volume - ' + activeExerciseName} data={volumeSeries} valueLabel={kg} />
           <View style={commonStyles.card}>
-            <Text style={commonStyles.cardTitle}>Melhor e1RM · {activeExerciseName}</Text>
-            <LineChart data={e1rmSeries} valueLabel={v => v.toFixed(1) + ' kg'} />
-          </View>
-
-          <View style={commonStyles.card}>
-            <Text style={commonStyles.cardTitle}>Volume por sessão</Text>
-            <LineChart data={volumeSeries} valueLabel={v => Math.round(v).toLocaleString('pt-BR') + ' kg'} />
-          </View>
-
-          <View style={commonStyles.card}>
-            <Text style={commonStyles.cardTitle}>Histórico · {activeExerciseName}</Text>
+            <Text style={commonStyles.cardTitle}>Logs de {activeExerciseName}</Text>
             {exerciseSeries.slice().reverse().map(item => (
               <View key={item.key} style={styles.exerciseRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.exerciseName}>{item.dateLabel} · {item.programLabel}</Text>
-                  <Text style={commonStyles.muted}>{item.sets} sets · RIR médio {item.averageRir.toFixed(1)}</Text>
+                  <Text style={styles.exerciseName}>{item.dateLabel} - {item.programLabel}</Text>
+                  <Text style={commonStyles.muted}>{item.sets} sets - RIR medio {item.averageRir.toFixed(1)}</Text>
                 </View>
                 <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.exerciseVolume}>{item.volume.toLocaleString('pt-BR')} kg</Text>
+                  <Text style={styles.exerciseVolume}>{kg(item.volume)}</Text>
                   <Text style={styles.delta}>e1RM {item.bestE1rm.toFixed(1)}</Text>
                 </View>
               </View>
             ))}
           </View>
         </>
-      ) : (
-        <View style={commonStyles.card}>
-          <Text style={commonStyles.cardTitle}>Sem dados no período selecionado</Text>
-          <Text style={[commonStyles.muted, { marginTop: 8 }]}>Tente um período maior ou finalize treinos com sets.</Text>
-        </View>
-      )}
+      ) : <EmptyCard title="Sem dados para esse exercicio" body="Finalize mais treinos ou troque o periodo analisado." />}
     </>
   );
 }
 
-export function AnalyticsScreen({ sessions }: { sessions: WorkoutSession[] }) {
-  const [mode, setMode] = useState<Mode>('overview');
+function EmptyCard({ title, body }: { title: string; body: string }) {
+  return <View style={commonStyles.card}><Text style={commonStyles.cardTitle}>{title}</Text><Text style={[commonStyles.muted, { marginTop: 8 }]}>{body}</Text></View>;
+}
 
-  return (
-    <ScrollView contentContainerStyle={commonStyles.screen}>
-      <ScreenTitle eyebrow="ANÁLISES" title="Análises" subtitle="Visão geral, por treino ou por exercício" />
-
-      <View style={styles.modeTabs}>
-        <Chip label="Geral" selected={mode === 'overview'} onPress={() => setMode('overview')} />
-        <Chip label="Por treino" selected={mode === 'program'} onPress={() => setMode('program')} />
-        <Chip label="Por exercício" selected={mode === 'exercise'} onPress={() => setMode('exercise')} />
-      </View>
-
-      {mode === 'overview' && <OverviewTab sessions={sessions} />}
-      {mode === 'program' && <ProgramTab sessions={sessions} />}
-      {mode === 'exercise' && <ExerciseTab sessions={sessions} />}
-    </ScrollView>
-  );
+function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <View style={styles.metric}><Text style={styles.metricLabel}>{label}</Text><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricDetail}>{detail}</Text></View>;
 }
 
 const styles = StyleSheet.create({
-  modeTabs: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 2 },
-  filters: { gap: 7, paddingVertical: 10, paddingRight: 20 },
-  timeframeRow: { flexDirection: 'row', gap: 6, marginTop: 2, marginBottom: 6 },
-  tfChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.elevated, borderWidth: 1, borderColor: colors.border },
-  tfChipActive: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder },
-  tfLabel: { color: colors.muted, fontSize: 10, fontWeight: '700' },
-  tfLabelActive: { color: colors.accent },
+  modeTabs: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 4, flexWrap: 'wrap' },
+  filters: { gap: 8, paddingVertical: 10, paddingRight: 20 },
+  timeframes: { flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 4 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 14 },
-  metric: { width: '48%', backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 16 },
-  metricLabel: { color: colors.muted, fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
-  metricValue: { color: colors.text, fontSize: 30, fontWeight: '900', marginTop: 6, letterSpacing: -0.5 },
-  metricDetail: { color: colors.textDim, fontSize: 9 },
-  chartRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-  cycleLabel: { color: colors.muted, fontSize: 10, fontWeight: '800', width: 40 },
-  barTrack: { flex: 1, height: 26, backgroundColor: colors.elevated, borderRadius: 13, overflow: 'hidden' },
-  bar: { height: '100%', backgroundColor: colors.accent, borderRadius: 13 },
-  barValue: { color: colors.text, fontSize: 10, fontWeight: '700', width: 74, textAlign: 'right' },
-  exerciseRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 11, marginTop: 8 },
-  exerciseName: { color: colors.text, fontSize: 12, fontWeight: '700' },
-  exerciseVolume: { color: colors.text, fontSize: 11, fontWeight: '800' },
-  delta: { color: colors.textDim, fontSize: 9, fontWeight: '800', marginTop: 3 },
+  metric: { width: '48%', backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 14, minHeight: 108, justifyContent: 'space-between' },
+  metricLabel: { color: colors.muted, fontSize: type.xs, fontWeight: '900', letterSpacing: 0.8 },
+  metricValue: { color: colors.text, fontSize: 26, fontWeight: '900', marginTop: 7, letterSpacing: -0.5 },
+  metricDetail: { color: colors.textDim, fontSize: type.xs, marginTop: 6, fontWeight: '700' },
+  weekBars: { height: 126, flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 16 },
+  weekItem: { flex: 1, alignItems: 'center', gap: 8 },
+  weekTrack: { height: 96, width: '100%', borderRadius: radius.full, backgroundColor: colors.elevated, overflow: 'hidden', justifyContent: 'flex-end', borderWidth: 1, borderColor: colors.border },
+  weekFill: { backgroundColor: colors.accent, borderRadius: radius.full },
+  weekLabel: { color: colors.textDim, fontSize: 8, fontWeight: '800' },
+  rankRow: { flexDirection: 'row', alignItems: 'center', gap: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 12, marginTop: 6 },
+  rank: { color: colors.textDim, fontSize: 10, fontWeight: '900', width: 24 },
+  rankValue: { color: colors.text, fontSize: 10, fontWeight: '900', width: 72, textAlign: 'right' },
+  volumeTrack: { height: 5, borderRadius: radius.full, backgroundColor: colors.elevated, overflow: 'hidden', marginTop: 7 },
+  volumeFill: { height: '100%', backgroundColor: colors.accent, borderRadius: radius.full },
+  exerciseRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: colors.border, paddingVertical: 12, marginTop: 8, gap: 12 },
+  exerciseName: { color: colors.text, fontSize: type.md, fontWeight: '900' },
+  exerciseVolume: { color: colors.text, fontSize: type.sm, fontWeight: '900' },
+  delta: { color: colors.textDim, fontSize: type.xs, fontWeight: '900', marginTop: 3 },
   positive: { color: colors.success },
   negative: { color: colors.danger },
 });

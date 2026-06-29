@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { PRBadge } from '../components/PRBadge';
 import { exerciseLibrary } from '../data/appDefaults';
-import { lastSessionSetsForExercise, normalizeExerciseKey } from '../data/analytics';
 import { isProgramCode } from '../data/cycles';
+import { computePRs, lastSessionSetsForExercise, normalizeExerciseKey } from '../data/analytics';
 import { moveSessionToStartedAt, nowOnLocalDate } from '../data/sessionDates';
 import { estimated1Rm, setVolumeKg } from '../data/setMetrics';
 import { configForTechnique, prescriptionSummary, prescriptionsFor, techniqueLabel, techniqueOptions, techniqueProfile } from '../data/techniques';
-import { colors, radius, type as typeScale } from '../theme';
+import { colors } from '../theme';
 import type { ExerciseBlock, LoggedSet, ProgramTemplate, RangeOfMotion, SetPrescription, SetType, TechniqueConfig, WorkoutSession } from '../types/training';
 import { ActionButton, Chip, commonStyles, DateEditor, ModalShell, ScreenTitle, Stepper } from '../ui';
 
@@ -34,6 +34,15 @@ function techniqueExecutionSummary(set: LoggedSet): string | null {
   if (details.breathsBetweenBlocks !== undefined) parts.push(details.breathsBetweenBlocks + ' resp.');
   if (details.durationSeconds !== undefined) parts.push(formatTimer(details.durationSeconds));
   return parts.length ? parts.join(' · ') : null;
+}
+
+function compactSet(set: LoggedSet) {
+  return set.loadKg + 'kg x ' + set.repetitions + (set.rir !== undefined ? ' @' + set.rir : '');
+}
+
+function previousSetsSummary(sets: LoggedSet[]) {
+  if (sets.length === 0) return '';
+  return sets.slice(0, 4).map(compactSet).join(' - ') + (sets.length > 4 ? ' +' + (sets.length - 4) : '');
 }
 
 function TechniqueExecutionInputs({ type, config, segments, durationSeconds, onConfigChange, onSegmentsChange, onDurationChange }: {
@@ -101,7 +110,7 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
   block: ExerciseBlock;
   sessionStartedAt: string;
   index: number;
-  previousSets: LoggedSet[] | null;
+  previousSets: LoggedSet[];
   bestHistoricalE1rm: number;
   onChange: (block: ExerciseBlock) => void;
   onRemove: () => void;
@@ -121,8 +130,7 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
   const [rom, setRom] = useState<RangeOfMotion>('full');
   const [quality, setQuality] = useState(4);
   const [pain, setPain] = useState(0);
-  const [showPR, setShowPR] = useState(false);
-  const prTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [prVisible, setPrVisible] = useState(false);
 
   useEffect(() => {
     if (!nextPrescription) return;
@@ -165,13 +173,8 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
         durationSeconds: techniqueProfile(type).showDuration ? durationSeconds : undefined,
       },
     };
-    const newSets = [...block.sets, set];
-    onChange({ ...block, sets: newSets });
-    if (estimated1Rm(set) > bestHistoricalE1rm && set.type !== 'warmup' && set.type !== 'approach') {
-      setShowPR(true);
-      if (prTimer.current) clearTimeout(prTimer.current);
-      prTimer.current = setTimeout(() => setShowPR(false), 3000);
-    }
+    if (bestHistoricalE1rm > 0 && estimated1Rm(set) > bestHistoricalE1rm) setPrVisible(true);
+    onChange({ ...block, sets: [...block.sets, set] });
   }
 
   return (
@@ -185,6 +188,13 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
               {prescriptions.length ? prescriptions.map(item => techniqueLabel(item.technique)).join(' / ') : 'Sem prescrição definida'}
             </Text>
             {block.notes ? <Text style={styles.notePreview}>Obs.: {block.notes}</Text> : null}
+            {previousSets.length ? (
+              <View style={styles.previousBox}>
+                <Text style={styles.previousLabel}>ULTIMA VEZ</Text>
+                <Text style={styles.previousSets}>{previousSetsSummary(previousSets)}</Text>
+              </View>
+            ) : null}
+            <PRBadge visible={prVisible} onDone={() => setPrVisible(false)} />
           </View>
         </View>
         <Pressable onPress={() => setMenu(value => !value)}><Text style={styles.more}>•••</Text></Pressable>
@@ -194,21 +204,6 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
         <View style={styles.inlineMenu}>
           <ActionButton label="Limpar sets" tone="secondary" onPress={() => { onChange({ ...block, sets: [] }); setMenu(false); }} />
           <ActionButton label="Remover exercício" tone="danger" onPress={onRemove} />
-        </View>
-      )}
-
-      {previousSets && previousSets.length > 0 && (
-        <View style={styles.ghostRow}>
-          <Text style={styles.ghostLabel}>ANT.</Text>
-          <Text style={styles.ghostSets} numberOfLines={2}>
-            {previousSets.filter(s => s.type !== 'warmup' && s.type !== 'approach').slice(0, 4).map(s => s.loadKg + '×' + s.repetitions + (s.rir !== undefined ? '@' + s.rir : '')).join('  ·  ')}
-          </Text>
-          {showPR && <PRBadge visible={showPR} />}
-        </View>
-      )}
-      {!previousSets && showPR && (
-        <View style={styles.ghostRow}>
-          <PRBadge visible={showPR} />
         </View>
       )}
 
@@ -308,26 +303,21 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
   const totalSets = session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
   const volume = useMemo(() => session.exercises.flatMap(exercise => exercise.sets).reduce((total, set) => total + setVolumeKg(set), 0), [session]);
   const workoutPrograms = programs.filter(program => isProgramCode(program.name));
-
   const previousSetsMap = useMemo(() => {
-    const map = new Map<string, LoggedSet[] | null>();
-    for (const block of session.exercises) {
-      const key = normalizeExerciseKey(block);
-      map.set(block.id, lastSessionSetsForExercise(history, key, session.id));
-    }
+    const map = new Map<string, LoggedSet[]>();
+    session.exercises.forEach(block => {
+      map.set(block.id, lastSessionSetsForExercise(history, normalizeExerciseKey(block), session.id));
+    });
     return map;
-  }, [history, session.exercises.map(b => b.id).join(','), session.id]);
-
-  const prsMap = useMemo(() => {
+  }, [history, session.exercises, session.id]);
+  const bestE1rmMap = useMemo(() => {
+    const prs = computePRs(history);
     const map = new Map<string, number>();
-    for (const block of session.exercises) {
-      const key = normalizeExerciseKey(block);
-      const best = history.filter(s => s.endedAt).flatMap(s => s.exercises).filter(e => normalizeExerciseKey(e) === key).flatMap(e => e.sets.filter(s => s.type !== 'warmup' && s.type !== 'approach')).reduce((best, set) => Math.max(best, estimated1Rm(set)), 0);
-      map.set(block.id, best);
-    }
+    session.exercises.forEach(block => {
+      map.set(block.id, prs.get(normalizeExerciseKey(block))?.bestE1rm ?? 0);
+    });
     return map;
-  }, [history, session.exercises.map(b => b.id).join(',')]);
-
+  }, [history, session.exercises]);
 
   useEffect(() => {
     if (!timerRunning) return;
@@ -423,16 +413,7 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
         ) : null}
 
         {session.exercises.map((block, index) => (
-          <ExerciseCard
-            key={block.id}
-            block={block}
-            index={index}
-            sessionStartedAt={session.startedAt}
-            previousSets={previousSetsMap.get(block.id) ?? null}
-            bestHistoricalE1rm={prsMap.get(block.id) ?? 0}
-            onChange={next => updateBlock(block.id, next)}
-            onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })}
-          />
+          <ExerciseCard key={block.id} block={block} index={index} sessionStartedAt={session.startedAt} previousSets={previousSetsMap.get(block.id) ?? []} bestHistoricalE1rm={bestE1rmMap.get(block.id) ?? 0} onChange={next => updateBlock(block.id, next)} onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })} />
         ))}
         <ActionButton label="+ ADICIONAR EXERCÍCIO" tone="secondary" onPress={() => setAddOpen(true)} />
         <ActionButton label="Finalizar treino" tone="danger" disabled={totalSets === 0} onPress={() => setFinishOpen(true)} />
@@ -460,43 +441,43 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
 }
 
 const styles = StyleSheet.create({
-  selector: { backgroundColor: colors.card, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: radius.lg, padding: 14, marginBottom: 18 },
-  selectorLabel: { color: colors.accent, fontSize: typeScale.xs, fontWeight: '800', letterSpacing: 1 },
-  selectorTitle: { color: colors.text, fontSize: typeScale.lg, fontWeight: '800', marginTop: 3 },
-  cycleBadge: { backgroundColor: colors.accentSoft, borderRadius: radius.full, paddingHorizontal: 9, paddingVertical: 5 },
+  selector: { backgroundColor: colors.card, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 18 },
+  selectorLabel: { color: colors.accent, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
+  selectorTitle: { color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 3 },
+  cycleBadge: { backgroundColor: colors.accentSoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
   cycleText: { color: colors.accent, fontSize: 8, fontWeight: '800' },
   programCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 },
-  programCard: { width: '48.4%', minHeight: 92, borderColor: colors.border, borderWidth: 1, borderRadius: radius.md, padding: 11, backgroundColor: colors.elevated },
+  programCard: { width: '48.4%', minHeight: 92, borderColor: colors.border, borderWidth: 1, borderRadius: 14, padding: 11, backgroundColor: colors.elevated },
   programCardSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
   programCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   programCardCode: { color: colors.text, fontSize: 20, fontWeight: '900' },
   programCardCodeSelected: { color: colors.background },
-  programSplitBadge: { borderRadius: radius.full, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: colors.upperBadge },
+  programSplitBadge: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: colors.upperBadge },
   programSplitBadgeLower: { backgroundColor: colors.lowerBadge },
   programSplitBadgeSelected: { backgroundColor: colors.background },
   programSplitText: { color: colors.accent, fontSize: 8, fontWeight: '900', textTransform: 'uppercase' },
   programSplitTextSelected: { color: colors.text },
-  programCardDetail: { color: colors.muted, fontSize: typeScale.sm, fontWeight: '800', marginTop: 10 },
+  programCardDetail: { color: colors.muted, fontSize: 11, fontWeight: '800', marginTop: 10 },
   programCardDetailSelected: { color: colors.background },
-  programCardDescription: { color: colors.textDim, fontSize: typeScale.xs, marginTop: 4 },
-  programCardDescriptionSelected: { color: colors.accentSoft },
+  programCardDescription: { color: colors.textDim, fontSize: 9, marginTop: 4 },
+  programCardDescriptionSelected: { color: colors.surface },
   programCardActive: { color: colors.background, fontSize: 8, fontWeight: '900', marginTop: 8, letterSpacing: 1 },
   exerciseCard: { ...commonStyles.card, padding: 15 },
   exerciseHeader: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  number: { width: 36, height: 36, borderRadius: radius.sm, backgroundColor: colors.accentSoft, justifyContent: 'center', alignItems: 'center' },
-  numberText: { color: colors.accent, fontWeight: '800', fontSize: typeScale.sm },
-  unprescribed: { color: colors.textDim, fontSize: typeScale.sm, marginTop: 2 },
+  number: { width: 36, height: 36, borderRadius: 10, backgroundColor: colors.accentSoft, justifyContent: 'center', alignItems: 'center' },
+  numberText: { color: colors.accent, fontWeight: '800', fontSize: 11 },
+  unprescribed: { color: colors.textDim, fontSize: 11, marginTop: 2 },
   more: { color: colors.muted, padding: 10, letterSpacing: 2 },
   notePreview: { color: colors.textDim, fontSize: 10, fontStyle: 'italic', marginTop: 3 },
-  inlineMenu: { backgroundColor: colors.elevated, borderRadius: radius.sm, padding: 8, marginTop: 10 },
-  ghostRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, paddingHorizontal: 2 },
-  ghostLabel: { color: colors.textDim, fontSize: 8, fontWeight: '800', width: 28 },
-  ghostSets: { flex: 1, color: colors.textDim, fontSize: 10, fontStyle: 'italic' },
+  previousBox: { borderLeftWidth: 2, borderLeftColor: colors.border, paddingLeft: 8, marginTop: 8 },
+  previousLabel: { color: colors.textDim, fontSize: 8, fontWeight: '900', letterSpacing: 1 },
+  previousSets: { color: colors.muted, fontSize: 10, fontStyle: 'italic', marginTop: 2 },
+  inlineMenu: { backgroundColor: colors.elevated, borderRadius: 10, padding: 8, marginTop: 10 },
   tableHeader: { flexDirection: 'row', marginTop: 16, paddingBottom: 7 },
   column: { flex: 1, color: colors.muted, fontSize: 9, textAlign: 'center' },
   smallColumn: { flex: 0.65, color: colors.muted, fontSize: 9, textAlign: 'center' },
   setRow: { flexDirection: 'row', alignItems: 'center', minHeight: 46, borderTopWidth: 1, borderTopColor: colors.border },
-  cell: { flex: 1, color: colors.text, fontSize: typeScale.md, textAlign: 'center', fontWeight: '600' },
+  cell: { flex: 1, color: colors.text, fontSize: 13, textAlign: 'center', fontWeight: '600' },
   cellText: { color: colors.text, textAlign: 'center', fontWeight: '700' },
   smallCell: { flex: 0.65, alignItems: 'center', justifyContent: 'center' },
   techniqueMini: { color: colors.accent, fontSize: 7, textAlign: 'center', marginTop: 2 },
@@ -507,30 +488,30 @@ const styles = StyleSheet.create({
   next: { color: colors.accent, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   target: { color: colors.muted, fontSize: 10, marginTop: 4 },
   steppers: { flexDirection: 'row', gap: 7, marginTop: 10 },
-  techniqueExecution: { backgroundColor: colors.elevated, borderRadius: radius.md, padding: 10, marginTop: 12 },
+  techniqueExecution: { backgroundColor: colors.elevated, borderRadius: 12, padding: 10, marginTop: 12 },
   techniqueHelp: { color: colors.textDim, fontSize: 10, lineHeight: 15, marginBottom: 10 },
   segmentGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   segmentItem: { width: '31%', minWidth: 92 },
   quickWeights: { marginTop: 10 },
   quickWeightsLabel: { color: colors.muted, fontSize: 8, fontWeight: '800', letterSpacing: 0.8, marginBottom: 7 },
   quickWeightsRow: { flexDirection: 'row', gap: 6 },
-  quickWeight: { flex: 1, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: radius.sm, paddingVertical: 9, alignItems: 'center' },
+  quickWeight: { flex: 1, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 9, paddingVertical: 9, alignItems: 'center' },
   quickWeightText: { color: colors.accent, fontSize: 10, fontWeight: '800' },
   quickWeightReduce: { borderColor: colors.dangerBorder, backgroundColor: colors.dangerSoft },
   quickWeightReduceText: { color: colors.danger, fontSize: 10, fontWeight: '800' },
   addWeightLabel: { marginTop: 10 },
   chips: { flexDirection: 'row', gap: 7, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, marginBottom: 10 },
-  details: { backgroundColor: colors.elevated, borderRadius: radius.md, padding: 12, marginTop: 10 },
-  detailTitle: { color: colors.text, fontSize: typeScale.sm, fontWeight: '700', marginTop: 12 },
-  notes: { minHeight: 90, color: colors.text, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.sm, padding: 11, marginTop: 8, textAlignVertical: 'top' },
-  live: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: colors.border, borderRadius: radius.full, padding: 7 },
+  details: { backgroundColor: colors.elevated, borderRadius: 11, padding: 12, marginTop: 10 },
+  detailTitle: { color: colors.text, fontSize: 11, fontWeight: '700', marginTop: 12 },
+  notes: { minHeight: 90, color: colors.text, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 10, padding: 11, marginTop: 8, textAlignVertical: 'top' },
+  live: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: colors.border, borderRadius: 20, padding: 7 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.danger },
   liveText: { color: colors.text, fontSize: 9, fontWeight: '800' },
   save: { color: colors.success, fontSize: 10, marginTop: 3 },
   metrics: { flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderBottomWidth: 1, borderColor: colors.border, paddingVertical: 17, marginTop: 20 },
   metricValue: { color: colors.text, fontWeight: '800', fontSize: 18, textAlign: 'center' },
   metricLabel: { color: colors.muted, fontSize: 9, textAlign: 'center', marginTop: 3 },
-  timer: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: radius.md, padding: 13, marginTop: 14 },
+  timer: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: 12, padding: 13, marginTop: 14 },
   timerValue: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2 },
   libraryItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
 });

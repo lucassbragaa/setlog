@@ -1,7 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Path, Rect } from 'react-native-svg';
+import { Circle, Line, Path, Rect, Svg } from 'react-native-svg';
 
 import { createDefaultData, mergeDefaultPrograms, sessionFromProgram } from './src/data/appDefaults';
 import { currentCycleNumber, isProgramCode } from './src/data/cycles';
@@ -14,56 +14,11 @@ import { HistoryScreen } from './src/screens/HistoryScreen';
 import { ProgramsScreen } from './src/screens/ProgramsScreen';
 import { WorkoutScreen } from './src/screens/WorkoutScreen';
 import { loadAppData, loadLegacySets, saveAppData } from './src/storage/workoutStorage';
-import { colors, radius, type as typeScale } from './src/theme';
+import { colors } from './src/theme';
 import type { AppData, ExerciseBlock, ProgramTemplate, WorkoutSession } from './src/types/training';
 
-const tabs = ['Treino', 'Ciclos', 'Histórico', 'Análises', 'Programas'] as const;
+const tabs = ['Treino', 'Ciclos', 'Historico', 'Analises', 'Programas'] as const;
 type Tab = typeof tabs[number];
-
-function TabIcon({ tab, color }: { tab: Tab; color: string }) {
-  return (
-    <Svg width={22} height={22} viewBox="0 0 22 22" fill="none">
-      {tab === 'Treino' && (
-        <>
-          <Path d="M8 11H14" stroke={color} strokeWidth={2} strokeLinecap="round" />
-          <Rect x={5} y={8} width={3} height={6} rx={1} fill={color} />
-          <Rect x={14} y={8} width={3} height={6} rx={1} fill={color} />
-          <Rect x={3} y={9.5} width={2} height={3} rx={0.8} fill={color} />
-          <Rect x={17} y={9.5} width={2} height={3} rx={0.8} fill={color} />
-        </>
-      )}
-      {tab === 'Ciclos' && (
-        <>
-          <Path d="M4 11C4 7.13 7.13 4 11 4C13.4 4 15.53 5.16 16.85 6.97" stroke={color} strokeWidth={2} strokeLinecap="round" />
-          <Path d="M18 11C18 14.87 14.87 18 11 18C8.6 18 6.47 16.84 5.15 15.03" stroke={color} strokeWidth={2} strokeLinecap="round" />
-          <Path d="M16 4.5L17.2 7L14.5 7.2" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-          <Path d="M6 17.5L4.8 15L7.5 14.8" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
-        </>
-      )}
-      {tab === 'Histórico' && (
-        <>
-          <Circle cx={11} cy={11} r={7.5} stroke={color} strokeWidth={2} />
-          <Path d="M11 7.5V11.5L13.5 13.5" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-        </>
-      )}
-      {tab === 'Análises' && (
-        <>
-          <Rect x={3.5} y={13} width={4} height={5} rx={1.5} fill={color} />
-          <Rect x={9} y={9} width={4} height={9} rx={1.5} fill={color} />
-          <Rect x={14.5} y={4} width={4} height={14} rx={1.5} fill={color} />
-        </>
-      )}
-      {tab === 'Programas' && (
-        <>
-          <Rect x={3} y={3} width={7} height={7} rx={1.5} stroke={color} strokeWidth={1.8} />
-          <Rect x={12} y={3} width={7} height={7} rx={1.5} stroke={color} strokeWidth={1.8} />
-          <Rect x={3} y={12} width={7} height={7} rx={1.5} stroke={color} strokeWidth={1.8} />
-          <Rect x={12} y={12} width={7} height={7} rx={1.5} stroke={color} strokeWidth={1.8} />
-        </>
-      )}
-    </Svg>
-  );
-}
 
 function emptyContinuation(session: WorkoutSession, cycleNumber?: number): WorkoutSession {
   const now = Date.now();
@@ -116,6 +71,24 @@ function syncActiveSessionWithProgram(
     programId: nextProgram.id,
     exercises: [...exercises, ...unsyncedLoggedBlocks],
   };
+}
+
+function TabIcon({ tab, active }: { tab: Tab; active: boolean }) {
+  const color = active ? colors.accent : colors.textDim;
+  const common = { stroke: color, strokeWidth: 2.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
+  if (tab === 'Treino') {
+    return <Svg width={22} height={22} viewBox="0 0 24 24"><Line x1="5" y1="12" x2="19" y2="12" {...common} /><Rect x="2.5" y="8" width="3" height="8" rx="1" {...common} /><Rect x="18.5" y="8" width="3" height="8" rx="1" {...common} /><Line x1="8" y1="9" x2="8" y2="15" {...common} /><Line x1="16" y1="9" x2="16" y2="15" {...common} /></Svg>;
+  }
+  if (tab === 'Ciclos') {
+    return <Svg width={22} height={22} viewBox="0 0 24 24"><Path d="M17 3l4 4-4 4" {...common} /><Path d="M21 7h-9a7 7 0 0 0-6.7 5" {...common} /><Path d="M7 21l-4-4 4-4" {...common} /><Path d="M3 17h9a7 7 0 0 0 6.7-5" {...common} /></Svg>;
+  }
+  if (tab === 'Historico') {
+    return <Svg width={22} height={22} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="8" {...common} /><Path d="M12 7v5l3 2" {...common} /></Svg>;
+  }
+  if (tab === 'Analises') {
+    return <Svg width={22} height={22} viewBox="0 0 24 24"><Rect x="4" y="13" width="3" height="7" rx="1" fill={color} /><Rect x="10.5" y="9" width="3" height="11" rx="1" fill={color} /><Rect x="17" y="5" width="3" height="15" rx="1" fill={color} /></Svg>;
+  }
+  return <Svg width={22} height={22} viewBox="0 0 24 24"><Rect x="4" y="4" width="6" height="6" rx="1.5" {...common} /><Rect x="14" y="4" width="6" height="6" rx="1.5" {...common} /><Rect x="4" y="14" width="6" height="6" rx="1.5" {...common} /><Rect x="14" y="14" width="6" height="6" rx="1.5" {...common} /></Svg>;
 }
 
 export default function App() {
@@ -172,7 +145,7 @@ export default function App() {
         history,
       };
     });
-    setActiveTab('Histórico');
+    setActiveTab('Historico');
   }
 
   function startProgram(program: ProgramTemplate) {
@@ -187,7 +160,7 @@ export default function App() {
     const now = Date.now();
     setData(current => ({
       ...current,
-      programs: [...current.programs, { ...program, id: 'custom-' + now, name: program.name + ' · cópia', split: undefined }],
+      programs: [...current.programs, { ...program, id: 'custom-' + now, name: program.name + ' - copia', split: undefined }],
     }));
   }
 
@@ -238,14 +211,14 @@ export default function App() {
         />
       )}
       {activeTab === 'Ciclos' && <CyclesScreen history={data.history} onExport={() => exportBackup(data)} onImport={restoreBackup} />}
-      {activeTab === 'Histórico' && (
+      {activeTab === 'Historico' && (
         <HistoryScreen
           history={data.history}
           onUpdate={updated => setData(current => ({ ...current, history: current.history.map(session => session.id === updated.id ? updated : session) }))}
           onDelete={id => setData(current => ({ ...current, history: current.history.filter(session => session.id !== id) }))}
         />
       )}
-      {activeTab === 'Análises' && <AnalyticsScreen sessions={data.history} />}
+      {activeTab === 'Analises' && <AnalyticsScreen sessions={data.history} />}
       {activeTab === 'Programas' && (
         <ProgramsScreen
           programs={data.programs}
@@ -266,11 +239,11 @@ export default function App() {
       )}
       <View style={styles.tabBar}>
         {tabs.map(tab => {
-          const isActive = activeTab === tab;
+          const active = activeTab === tab;
           return (
             <Pressable key={tab} style={styles.tab} onPress={() => setActiveTab(tab)}>
-              <TabIcon tab={tab} color={isActive ? colors.accent : colors.textDim} />
-              <Text style={[styles.tabText, isActive && styles.tabTextActive]}>{tab}</Text>
+              <TabIcon tab={tab} active={active} />
+              <Text style={[styles.tabText, active && styles.active]}>{tab}</Text>
             </Pressable>
           );
         })}
@@ -281,15 +254,8 @@ export default function App() {
 
 const styles = StyleSheet.create({
   app: { flex: 1, backgroundColor: colors.background },
-  tabBar: {
-    position: 'absolute', left: 0, right: 0, bottom: 0,
-    minHeight: 80,
-    backgroundColor: colors.card,
-    borderTopWidth: 1, borderTopColor: colors.border,
-    flexDirection: 'row',
-    paddingTop: 10, paddingBottom: 18,
-  },
+  tabBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 80, backgroundColor: '#000000F5', borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', paddingTop: 11, paddingBottom: 16 },
   tab: { flex: 1, alignItems: 'center', gap: 5 },
-  tabText: { color: colors.textDim, fontSize: 9, fontWeight: '600', letterSpacing: 0.1 },
-  tabTextActive: { color: colors.accent, fontWeight: '700' },
+  tabText: { color: colors.textDim, fontSize: 8, fontWeight: '800' },
+  active: { color: colors.accent },
 });

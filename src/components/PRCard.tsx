@@ -1,55 +1,42 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../theme';
+import { colors, radius } from '../theme';
 import type { ExercisePR } from '../types/training';
 
-interface PRCardProps {
-  pr: ExercisePR;
-}
-
-export function PRCard({ pr }: PRCardProps) {
-  const date = new Date(pr.achievedAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+export function PRCard({ pr }: { pr?: ExercisePR }) {
+  if (!pr) {
+    return (
+      <View style={styles.card}>
+        <Text style={styles.title}>Sem PR ainda</Text>
+        <Text style={styles.muted}>Finalize mais sets para liberar recordes deste exercicio.</Text>
+      </View>
+    );
+  }
   return (
     <View style={styles.card}>
-      <View style={styles.header}>
-        <Text style={styles.name} numberOfLines={1}>{pr.exerciseName}</Text>
-        <Text style={styles.date}>{date}</Text>
-      </View>
+      <Text style={styles.eyebrow}>PR HISTORICO</Text>
+      <Text style={styles.title}>{pr.exerciseName}</Text>
+      <Text style={styles.muted}>{new Date(pr.achievedAt).toLocaleDateString('pt-BR')}</Text>
       <View style={styles.metrics}>
-        <PRMetric label="e1RM" value={pr.bestE1rm.toFixed(1) + ' kg'} />
-        <View style={styles.divider} />
-        <PRMetric label="CARGA" value={pr.bestWeight.toFixed(1) + ' kg'} />
-        <View style={styles.divider} />
-        <PRMetric label="VOLUME" value={Math.round(pr.bestVolume).toLocaleString('pt-BR') + ' kg'} />
+        <Metric label="e1RM" value={pr.bestE1rm.toFixed(1)} />
+        <Metric label="CARGA" value={pr.bestWeight.toFixed(1)} />
+        <Metric label="VOLUME" value={Math.round(pr.bestVolume).toLocaleString('pt-BR')} />
       </View>
     </View>
   );
 }
 
-function PRMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
-    </View>
-  );
+function Metric({ label, value }: { label: string; value: string }) {
+  return <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View>;
 }
 
 const styles = StyleSheet.create({
-  card: {
-    backgroundColor: colors.card,
-    borderColor: colors.accentBorder,
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 8,
-  },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  name: { color: colors.text, fontSize: 12, fontWeight: '700', flex: 1 },
-  date: { color: colors.textDim, fontSize: 9, marginLeft: 8 },
-  metrics: { flexDirection: 'row', alignItems: 'center' },
-  metric: { flex: 1, alignItems: 'center' },
-  metricLabel: { color: colors.muted, fontSize: 7, fontWeight: '800', textTransform: 'uppercase' },
-  metricValue: { color: colors.accent, fontSize: 13, fontWeight: '800', marginTop: 2 },
-  divider: { width: 1, height: 28, backgroundColor: colors.border },
+  card: { backgroundColor: colors.card, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: radius.lg, padding: 15, marginTop: 14 },
+  eyebrow: { color: colors.textDim, fontSize: 9, fontWeight: '900', letterSpacing: 1.2 },
+  title: { color: colors.text, fontSize: 17, fontWeight: '900', marginTop: 5 },
+  muted: { color: colors.muted, fontSize: 11, marginTop: 4 },
+  metrics: { flexDirection: 'row', marginTop: 14, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 },
+  metric: { flex: 1, borderRightWidth: 1, borderRightColor: colors.border, alignItems: 'center' },
+  metricValue: { color: colors.text, fontSize: 17, fontWeight: '900' },
+  metricLabel: { color: colors.textDim, fontSize: 8, fontWeight: '900', marginTop: 4 },
 });
