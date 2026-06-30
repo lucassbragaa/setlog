@@ -138,8 +138,8 @@ export function DateEditor({ value, onChange, label = 'DATA DO TREINO' }: {
 }
 
 export const commonStyles = StyleSheet.create({
-  screen: { padding: 20, paddingTop: 24, paddingBottom: 125 },
-  card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 16, marginTop: 14 },
+  screen: { padding: 16, paddingTop: 18, paddingBottom: 125, backgroundColor: colors.background },
+  card: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.xl, padding: 16, marginTop: 14 },
   cardTitle: { color: colors.text, fontWeight: '900', fontSize: type.lg },
   muted: { color: colors.muted, fontSize: type.sm, lineHeight: 18 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -148,17 +148,17 @@ export const commonStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   pressed: { opacity: 0.72 },
-  button: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 13, paddingHorizontal: 14, alignItems: 'center', marginTop: 10, backgroundColor: colors.elevated },
+  button: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingVertical: 14, paddingHorizontal: 14, alignItems: 'center', marginTop: 10, backgroundColor: colors.elevated },
   primary: { backgroundColor: colors.accent, borderColor: colors.accent },
   danger: { borderColor: colors.dangerBorder, backgroundColor: colors.dangerSoft },
   disabled: { opacity: 0.4 },
   buttonText: { color: colors.text, fontSize: type.sm, fontWeight: '900', letterSpacing: 0.8 },
-  primaryText: { color: colors.background },
+  primaryText: { color: colors.text },
   dangerText: { color: colors.danger },
   chip: { borderWidth: 1, borderColor: colors.border, borderRadius: radius.full, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.elevated },
-  chipSelected: { borderColor: colors.accent, backgroundColor: colors.accent },
+  chipSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   chipText: { color: colors.muted, fontSize: type.sm, fontWeight: '700' },
-  chipTextSelected: { color: colors.background, fontWeight: '900' },
+  chipTextSelected: { color: colors.text, fontWeight: '900' },
   stepper: { flex: 1, backgroundColor: colors.elevated, borderRadius: radius.md, padding: 10, borderWidth: 1, borderColor: colors.border },
   stepLabel: { color: colors.muted, fontSize: type.xs, fontWeight: '900', textAlign: 'center', letterSpacing: 0.8 },
   stepRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },

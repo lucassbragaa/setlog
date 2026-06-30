@@ -6,7 +6,7 @@ let html = await readFile(indexPath, 'utf8');
 const pwaHead = `
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/icon-1024.png" />
-    <meta name="theme-color" content="#090D10" />
+    <meta name="theme-color" content="#05070A" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Setlog" />`;

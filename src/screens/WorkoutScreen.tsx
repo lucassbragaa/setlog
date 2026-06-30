@@ -36,8 +36,19 @@ function techniqueExecutionSummary(set: LoggedSet): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
+function setSegments(set: LoggedSet): number[] {
+  return set.techniqueDetails?.segmentRepetitions?.length ? set.techniqueDetails.segmentRepetitions : [set.repetitions];
+}
+
+function segmentLabel(set: LoggedSet) {
+  const segments = setSegments(set);
+  return segments.length > 1 ? segments.join('+') : String(segments[0] ?? set.repetitions);
+}
+
 function compactSet(set: LoggedSet) {
-  return set.loadKg + 'kg x ' + set.repetitions + (set.rir !== undefined ? ' @' + set.rir : '');
+  const segments = setSegments(set);
+  const totalLabel = segments.length > 1 ? ' (' + set.repetitions + ')' : '';
+  return set.loadKg + 'kg x ' + segmentLabel(set) + totalLabel + (set.rir !== undefined ? ' @' + set.rir : '');
 }
 
 function previousSetsSummary(sets: LoggedSet[]) {
@@ -47,6 +58,14 @@ function previousSetsSummary(sets: LoggedSet[]) {
 
 function previousForSet(sets: LoggedSet[], index: number) {
   return sets[index] ? compactSet(sets[index]) : '-';
+}
+
+function previousBlocksForSet(set?: LoggedSet) {
+  if (!set) return [];
+  return setSegments(set).map((repetitions, index) => ({
+    label: index === 0 ? 'B1' : 'B' + (index + 1),
+    repetitions,
+  }));
 }
 
 function TechniqueExecutionInputs({ type, config, segments, durationSeconds, onConfigChange, onSegmentsChange, onDurationChange }: {
@@ -122,12 +141,16 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
   const last = block.sets[block.sets.length - 1];
   const prescriptions = prescriptionsFor(block);
   const nextPrescription = prescriptions[block.sets.length];
-  const [weight, setWeight] = useState(last?.loadKg ?? previousSets[block.sets.length]?.loadKg ?? 0);
-  const [reps, setReps] = useState(nextPrescription?.repRange[1] ?? previousSets[block.sets.length]?.repetitions ?? last?.repetitions ?? 0);
+  const previousNextSet = previousSets[block.sets.length];
+  const previousNextSegments = previousNextSet ? setSegments(previousNextSet) : [];
+  const [weight, setWeight] = useState(last?.loadKg ?? previousNextSet?.loadKg ?? 0);
+  const [reps, setReps] = useState(nextPrescription?.repRange[1] ?? previousNextSegments[0] ?? last?.repetitions ?? 0);
   const [rir, setRir] = useState(nextPrescription?.rirRange[1] ?? last?.rir ?? 0);
   const [type, setType] = useState<SetType>(nextPrescription?.technique ?? 'working');
   const [techniqueConfig, setTechniqueConfig] = useState<TechniqueConfig | undefined>(() => configForTechnique(nextPrescription?.technique ?? 'working', nextPrescription?.techniqueConfig));
-  const [segmentReps, setSegmentReps] = useState<number[]>(() => buildSegments(nextPrescription?.technique ?? 'working', nextPrescription?.repRange[1] ?? last?.repetitions ?? 0, nextPrescription));
+  const [segmentReps, setSegmentReps] = useState<number[]>(() => nextPrescription
+    ? buildSegments(nextPrescription.technique, nextPrescription.repRange[1], nextPrescription)
+    : previousNextSegments.length ? previousNextSegments : buildSegments('working', last?.repetitions ?? 0));
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [details, setDetails] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -137,7 +160,16 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
   const [prVisible, setPrVisible] = useState(false);
 
   useEffect(() => {
-    if (!nextPrescription) return;
+    if (!nextPrescription) {
+      if (previousNextSet) {
+        const previousSegments = setSegments(previousNextSet);
+        setWeight(previousNextSet.loadKg);
+        setReps(previousSegments[0] ?? previousNextSet.repetitions);
+        setRir(previousNextSet.rir ?? 0);
+        setSegmentReps(previousSegments);
+      }
+      return;
+    }
     setReps(nextPrescription.repRange[1]);
     setRir(nextPrescription.rirRange[1]);
     setType(nextPrescription.technique);
@@ -152,6 +184,7 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
     nextPrescription?.rirRange[1],
     nextPrescription?.technique,
     nextPrescription?.techniqueConfig,
+    previousNextSet?.id,
   ]);
 
   function logSet() {
@@ -165,14 +198,15 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
       loadKg: weight,
       repetitions: totalRepetitions,
       rir,
-      previous: previousSets[block.sets.length] ? {
+      previous: previousNextSet ? {
         source: 'any-workout',
         workoutId: 'previous',
         workoutName: 'Anterior',
-        completedAt: previousSets[block.sets.length].completedAt,
-        loadKg: previousSets[block.sets.length].loadKg,
-        repetitions: previousSets[block.sets.length].repetitions,
-        rir: previousSets[block.sets.length].rir,
+        completedAt: previousNextSet.completedAt,
+        loadKg: previousNextSet.loadKg,
+        repetitions: previousNextSet.repetitions,
+        segmentRepetitions: setSegments(previousNextSet),
+        rir: previousNextSet.rir,
       } : undefined,
       completedAt: nowOnLocalDate(sessionStartedAt),
       rangeOfMotion: rom,
@@ -228,7 +262,16 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
         ) : block.sets.map(set => (
           <View style={styles.setRow} key={set.id}>
             <View style={styles.setCell}><Text style={styles.cellText}>{set.order}</Text><Text style={styles.techniqueMini}>{techniqueLabel(set.type)}</Text>{techniqueExecutionSummary(set) ? <Text style={styles.techniqueDetailMini}>{techniqueExecutionSummary(set)}</Text> : null}</View>
-            <Text style={styles.previousCell}>{previousForSet(previousSets, set.order - 1)}</Text>
+            <View style={styles.previousCellBox}>
+              <Text style={styles.previousCell}>{previousForSet(previousSets, set.order - 1)}</Text>
+              {previousBlocksForSet(previousSets[set.order - 1]).length > 1 ? (
+                <View style={styles.previousBlockRow}>
+                  {previousBlocksForSet(previousSets[set.order - 1]).map(item => (
+                    <Text key={item.label} style={styles.previousBlockPill}>{item.label} {item.repetitions}</Text>
+                  ))}
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.cell}>{set.loadKg}</Text>
             <Text style={styles.cell}>{set.repetitions}</Text>
             <Text style={styles.cell}>{set.rir ?? '-'}</Text>
@@ -244,6 +287,13 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
           <View style={{ flex: 1 }}>
             <Text style={styles.next}>{nextPrescription ? 'PROXIMO SET PRESCRITO' : 'LOGAR PROXIMO SET'}</Text>
             <Text style={styles.target}>{techniqueLabel(type)} - anterior: {previousForSet(previousSets, block.sets.length)}</Text>
+            {previousBlocksForSet(previousNextSet).length > 1 ? (
+              <View style={styles.previousBlockRow}>
+                {previousBlocksForSet(previousNextSet).map(item => (
+                  <Text key={item.label} style={styles.previousBlockPill}>{item.label} {item.repetitions}</Text>
+                ))}
+              </View>
+            ) : null}
             {nextPrescription ? <Text style={styles.target}>Meta {prescriptionSummary(nextPrescription)} - RIR {nextPrescription.rirRange[0]}-{nextPrescription.rirRange[1]}</Text> : null}
           </View>
           <View style={styles.setNumberBadge}><Text style={styles.setNumberText}>{block.sets.length + 1}</Text></View>
@@ -470,31 +520,31 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
 }
 
 const styles = StyleSheet.create({
-  selector: { backgroundColor: colors.card, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 18 },
+  selector: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 20, padding: 14, marginBottom: 18 },
   selectorLabel: { color: colors.accent, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
   selectorTitle: { color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 3 },
   cycleBadge: { backgroundColor: colors.accentSoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
   cycleText: { color: colors.accent, fontSize: 8, fontWeight: '800' },
   programCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 },
-  programCard: { width: '48.4%', minHeight: 92, borderColor: colors.border, borderWidth: 1, borderRadius: 14, padding: 11, backgroundColor: colors.elevated },
+  programCard: { width: '48.4%', minHeight: 96, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 12, backgroundColor: colors.elevated },
   programCardSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
   programCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   programCardCode: { color: colors.text, fontSize: 20, fontWeight: '900' },
-  programCardCodeSelected: { color: colors.background },
+  programCardCodeSelected: { color: colors.text },
   programSplitBadge: { borderRadius: 999, paddingHorizontal: 7, paddingVertical: 3, backgroundColor: colors.upperBadge },
   programSplitBadgeLower: { backgroundColor: colors.lowerBadge },
-  programSplitBadgeSelected: { backgroundColor: colors.background },
+  programSplitBadgeSelected: { backgroundColor: colors.card },
   programSplitText: { color: colors.accent, fontSize: 8, fontWeight: '900', textTransform: 'uppercase' },
   programSplitTextSelected: { color: colors.text },
   programCardDetail: { color: colors.muted, fontSize: 11, fontWeight: '800', marginTop: 10 },
-  programCardDetailSelected: { color: colors.background },
+  programCardDetailSelected: { color: colors.text },
   programCardDescription: { color: colors.textDim, fontSize: 9, marginTop: 4 },
-  programCardDescriptionSelected: { color: colors.surface },
-  programCardActive: { color: colors.background, fontSize: 8, fontWeight: '900', marginTop: 8, letterSpacing: 1 },
-  workoutHero: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 20, padding: 16, marginTop: 10, marginBottom: 4 },
+  programCardDescriptionSelected: { color: '#D9E6FF' },
+  programCardActive: { color: colors.text, fontSize: 8, fontWeight: '900', marginTop: 8, letterSpacing: 1 },
+  workoutHero: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 22, padding: 16, marginTop: 10, marginBottom: 4 },
   workoutTitle: { color: colors.text, fontSize: 30, fontWeight: '900', letterSpacing: -0.6, marginTop: 4 },
   workoutSubtitle: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 4 },
-  exerciseCard: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 14, marginTop: 14 },
+  exerciseCard: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 22, padding: 14, marginTop: 14 },
   exerciseTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
   exerciseCardTitle: { color: colors.text, fontWeight: '900', fontSize: 18 },
   exerciseHeader: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -516,7 +566,10 @@ const styles = StyleSheet.create({
   smallColumn: { flex: 0.65, color: colors.muted, fontSize: 9, textAlign: 'center' },
   setRow: { flexDirection: 'row', alignItems: 'center', minHeight: 48, borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 7 },
   cell: { flex: 0.85, color: colors.text, fontSize: 13, textAlign: 'center', fontWeight: '800' },
-  previousCell: { flex: 1.55, color: colors.textDim, fontSize: 10, textAlign: 'center', fontWeight: '700' },
+  previousCellBox: { flex: 1.55, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  previousCell: { color: colors.muted, fontSize: 10, textAlign: 'center', fontWeight: '800' },
+  previousBlockRow: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 4, marginTop: 4 },
+  previousBlockPill: { overflow: 'hidden', color: colors.text, fontSize: 8, fontWeight: '900', backgroundColor: colors.accentSoft, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
   cellText: { color: colors.text, textAlign: 'center', fontWeight: '700' },
   setCell: { flex: 0.65, alignItems: 'center', justifyContent: 'center' },
   actionCell: { flex: 0.45, alignItems: 'center', justifyContent: 'center' },
@@ -527,7 +580,7 @@ const styles = StyleSheet.create({
   emptySets: { color: colors.textDim, fontSize: 12, paddingVertical: 18, paddingHorizontal: 12, textAlign: 'center', borderTopWidth: 1, borderColor: colors.border, lineHeight: 17 },
   logPanel: { backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 13, marginTop: 13 },
   setNumberBadge: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center' },
-  setNumberText: { color: colors.background, fontSize: 16, fontWeight: '900' },
+  setNumberText: { color: colors.text, fontSize: 16, fontWeight: '900' },
   nextPrescription: { marginTop: 15 },
   next: { color: colors.accent, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   target: { color: colors.muted, fontSize: 10, marginTop: 4, lineHeight: 15 },

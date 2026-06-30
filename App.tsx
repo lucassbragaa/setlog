@@ -258,8 +258,8 @@ export default function App() {
 
 const styles = StyleSheet.create({
   app: { flex: 1, backgroundColor: colors.background },
-  tabBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 80, backgroundColor: '#000000F5', borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', paddingTop: 11, paddingBottom: 16 },
-  tab: { flex: 1, alignItems: 'center', gap: 5 },
+  tabBar: { position: 'absolute', left: 10, right: 10, bottom: 10, minHeight: 74, backgroundColor: '#10141CF5', borderWidth: 1, borderColor: colors.border, borderRadius: 24, flexDirection: 'row', paddingTop: 10, paddingBottom: 10 },
+  tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
   tabText: { color: colors.textDim, fontSize: 8, fontWeight: '800' },
   active: { color: colors.accent },
 });

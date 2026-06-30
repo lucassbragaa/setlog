@@ -57,6 +57,7 @@ export interface PreviousSetSnapshot {
   completedAt: string;
   loadKg?: number;
   repetitions?: number;
+  segmentRepetitions?: number[];
   durationSeconds?: number;
   distanceMeters?: number;
   rir?: number;
