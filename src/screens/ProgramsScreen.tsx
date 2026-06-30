@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { exerciseLibrary } from '../data/appDefaults';
 import { configForTechnique, emptyPrescription, exerciseWithPrescriptions, prescriptionSummary, prescriptionsFor, techniqueLabel, techniqueOptions, techniqueProfile } from '../data/techniques';
 import { colors } from '../theme';
-import type { ProgramExercise, ProgramTemplate, SetPrescription } from '../types/training';
+import type { ProgramExercise, ProgramTemplate, RoutineFolder, SetPrescription } from '../types/training';
 import { ActionButton, Chip, commonStyles, ModalShell, ScreenTitle, Stepper } from '../ui';
 
 type EditorTarget = { programId: string; exerciseIndex: number };
@@ -94,14 +94,16 @@ function TechniquePrescriptionEditor({ prescription, onChange }: {
   );
 }
 
-export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCreateBlank, onDelete, onUpdate }: {
+export function ProgramsScreen({ programs, folders, onStart, onDuplicate, onCreate, onCreateBlank, onDelete, onUpdate, onReorder }: {
   programs: ProgramTemplate[];
+  folders: RoutineFolder[];
   onStart: (program: ProgramTemplate) => void;
   onDuplicate: (program: ProgramTemplate) => void;
   onCreate: () => void;
   onCreateBlank: () => void;
   onDelete: (id: string) => void;
   onUpdate: (program: ProgramTemplate) => void;
+  onReorder: (programs: ProgramTemplate[]) => void;
 }) {
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [programEditor, setProgramEditor] = useState<ProgramEditorTarget | null>(null);
@@ -111,6 +113,12 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
   const program = editor ? programs.find(item => item.id === editor.programId) : undefined;
   const editedExercise = program && editor ? program.exercises[editor.exerciseIndex] : undefined;
   const editedProgram = programEditor ? programs.find(item => item.id === programEditor.programId) : undefined;
+  const folderById = useMemo(() => new Map(folders.map(folder => [folder.id, folder])), [folders]);
+  const displayPrograms = useMemo(() => [...programs].sort((a, b) => {
+    const aFolder = folderById.get(a.folderId ?? 'folder-custom')?.order ?? 999;
+    const bFolder = folderById.get(b.folderId ?? 'folder-custom')?.order ?? 999;
+    return aFolder - bFolder || (a.order ?? 999) - (b.order ?? 999) || a.name.localeCompare(b.name, 'pt-BR');
+  }), [folderById, programs]);
 
   function updateProgram(program: ProgramTemplate) {
     onUpdate(program);
@@ -131,6 +139,21 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
     const [moved] = exercises.splice(from, 1);
     exercises.splice(to, 0, moved);
     updateProgram({ ...program, exercises });
+  }
+
+  function moveProgram(program: ProgramTemplate, direction: -1 | 1) {
+    const folderId = program.folderId ?? 'folder-custom';
+    const group = programs
+      .filter(item => (item.folderId ?? 'folder-custom') === folderId)
+      .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || a.name.localeCompare(b.name, 'pt-BR'));
+    const index = group.findIndex(item => item.id === program.id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= group.length) return;
+    const nextGroup = [...group];
+    const [moved] = nextGroup.splice(index, 1);
+    nextGroup.splice(target, 0, moved);
+    const orderById = new Map(nextGroup.map((item, itemIndex) => [item.id, itemIndex + 1]));
+    onReorder(programs.map(item => orderById.has(item.id) ? { ...item, order: orderById.get(item.id) } : item));
   }
 
   function placeMovingExercise(program: ProgramTemplate, targetIndex: number) {
@@ -180,7 +203,7 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
           <View style={{ flex: 1 }}><ActionButton label="+ CRIAR TREINO NOVO" onPress={onCreateBlank} /></View>
           <View style={{ flex: 1 }}><ActionButton label="+ COPIAR TREINO ATUAL" tone="secondary" onPress={onCreate} /></View>
         </View>
-        {programs.map(item => (
+        {displayPrograms.map(item => (
           <View key={item.id} style={commonStyles.card}>
             <View style={commonStyles.between}>
               <View style={{ flex: 1 }}>
@@ -189,6 +212,7 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
                   {item.split ? <View style={[styles.splitBadge, item.split === 'Lower' && styles.lowerBadge]}><Text style={styles.splitText}>{item.split}</Text></View> : null}
                 </View>
                 <Text style={commonStyles.muted}>{item.description || 'Sem descrição'}</Text>
+                <Text style={styles.folderName}>{folderById.get(item.folderId ?? 'folder-custom')?.name ?? 'Sem pasta'}</Text>
               </View>
               <View style={styles.badge}><Text style={styles.badgeText}>{item.exercises.length}</Text></View>
             </View>
@@ -234,6 +258,8 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
             <ActionButton label="INICIAR ESTE TREINO" onPress={() => onStart(item)} />
             <View style={styles.actions}>
               <View style={{ flex: 1 }}><ActionButton label="Editar treino" tone="secondary" onPress={() => setProgramEditor({ programId: item.id })} /></View>
+              <View style={{ flex: 0.55 }}><ActionButton label="↑" tone="secondary" onPress={() => moveProgram(item, -1)} /></View>
+              <View style={{ flex: 0.55 }}><ActionButton label="↓" tone="secondary" onPress={() => moveProgram(item, 1)} /></View>
               <View style={{ flex: 1 }}><ActionButton label="Duplicar" tone="secondary" onPress={() => onDuplicate(item)} /></View>
               {item.id.startsWith('custom-') ? <View style={{ flex: 1 }}><ActionButton label="Excluir" tone="danger" onPress={() => onDelete(item.id)} /></View> : null}
             </View>
@@ -255,6 +281,12 @@ export function ProgramsScreen({ programs, onStart, onDuplicate, onCreate, onCre
                 <Chip label="Upper" selected={editedProgram.split === 'Upper'} onPress={() => updateProgram({ ...editedProgram, split: 'Upper' })} />
                 <Chip label="Lower" selected={editedProgram.split === 'Lower'} onPress={() => updateProgram({ ...editedProgram, split: 'Lower' })} />
                 <Chip label="Livre" selected={!editedProgram.split} onPress={() => updateProgram({ ...editedProgram, split: undefined })} />
+              </View>
+              <Text style={styles.fieldLabel}>Pasta</Text>
+              <View style={styles.chips}>
+                {folders.map(folder => (
+                  <Chip key={folder.id} label={folder.name} selected={(editedProgram.folderId ?? 'folder-custom') === folder.id} onPress={() => updateProgram({ ...editedProgram, folderId: folder.id })} />
+                ))}
               </View>
 
               <Text style={styles.sectionTitle}>EXERCÍCIOS</Text>
@@ -331,6 +363,7 @@ const styles = StyleSheet.create({
   splitBadge: { backgroundColor: '#163A35', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
   lowerBadge: { backgroundColor: '#332A18' },
   splitText: { color: colors.accent, fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  folderName: { color: colors.accent, fontSize: 10, fontWeight: '900', marginTop: 6, textTransform: 'uppercase' },
   badge: { width: 35, height: 35, borderRadius: 18, backgroundColor: colors.accentSoft, justifyContent: 'center', alignItems: 'center' },
   badgeText: { color: colors.accent, fontWeight: '800' },
   list: { marginTop: 12, backgroundColor: colors.elevated, borderRadius: 10, paddingHorizontal: 10 },
