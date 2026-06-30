@@ -4,12 +4,13 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { PRBadge } from '../components/PRBadge';
 import { exerciseLibrary } from '../data/appDefaults';
 import { isProgramCode } from '../data/cycles';
+import { matchesMuscle, muscleLabel, muscleOrder } from '../data/exerciseTaxonomy';
 import { computePRs, lastSessionSetsForExercise, normalizeExerciseKey } from '../data/analytics';
 import { moveSessionToStartedAt, nowOnLocalDate } from '../data/sessionDates';
 import { estimated1Rm, setVolumeKg } from '../data/setMetrics';
 import { configForTechnique, prescriptionSummary, prescriptionsFor, techniqueLabel, techniqueOptions, techniqueProfile } from '../data/techniques';
 import { colors } from '../theme';
-import type { ExerciseBlock, LoggedSet, ProgramTemplate, RangeOfMotion, SetPrescription, SetType, TechniqueConfig, WorkoutSession } from '../types/training';
+import type { ExerciseBlock, LoggedSet, MuscleGroup, ProgramTemplate, RangeOfMotion, SetPrescription, SetType, TechniqueConfig, WorkoutSession } from '../types/training';
 import { ActionButton, Chip, commonStyles, DateEditor, ModalShell, ScreenTitle, Stepper } from '../ui';
 
 function formatTimer(seconds: number) {
@@ -374,6 +375,8 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
   const [pendingProgram, setPendingProgram] = useState<ProgramTemplate | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [timerRunning, setTimerRunning] = useState(false);
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryMuscle, setLibraryMuscle] = useState<MuscleGroup | 'all'>('all');
   const totalSets = session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
   const volume = useMemo(() => session.exercises.flatMap(exercise => exercise.sets).reduce((total, set) => total + setVolumeKg(set), 0), [session]);
   const workoutPrograms = programs.filter(program => isProgramCode(program.name));
@@ -392,6 +395,22 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
     });
     return map;
   }, [history, session.exercises]);
+  const filteredLibrary = useMemo(() => {
+    const needle = libraryQuery.trim().toLowerCase();
+    return exerciseLibrary.filter(item => {
+      const matchesQuery = !needle
+        || item.name.toLowerCase().includes(needle)
+        || item.template.equipment.toLowerCase().includes(needle)
+        || [...item.template.primaryMuscles, ...(item.template.secondaryMuscles ?? [])].map(muscleLabel).join(' ').toLowerCase().includes(needle);
+      return matchesQuery && matchesMuscle(item.template, libraryMuscle);
+    });
+  }, [libraryMuscle, libraryQuery]);
+  const libraryGroups = useMemo(() => muscleOrder
+    .map(muscle => ({
+      muscle,
+      items: filteredLibrary.filter(item => item.template.primaryMuscles[0] === muscle),
+    }))
+    .filter(group => group.items.length > 0), [filteredLibrary]);
 
   useEffect(() => {
     if (!timerRunning) return;
@@ -436,9 +455,17 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
   return (
     <>
       <ScrollView contentContainerStyle={commonStyles.screen} showsVerticalScrollIndicator={false}>
+        <View style={styles.appHeader}>
+          <Text style={styles.appTitle}>Workout</Text>
+          <Text style={styles.appSubtitle}>Log rápido, previous values e rotinas organizadas.</Text>
+        </View>
+        <Pressable style={styles.startEmptyButton} onPress={() => setAddOpen(true)}>
+          <Text style={styles.startEmptyText}>Start Empty Workout</Text>
+        </Pressable>
+        <Text style={styles.sectionHeading}>Routines</Text>
         <View style={styles.selector}>
           <View style={commonStyles.between}>
-            <View><Text style={styles.selectorLabel}>TREINO DE HOJE</Text><Text style={styles.selectorTitle}>Escolha A1–B4</Text></View>
+            <View><Text style={styles.selectorLabel}>MY ROUTINES</Text><Text style={styles.selectorTitle}>Escolha A1–B4</Text></View>
             {session.cycleNumber ? <View style={styles.cycleBadge}><Text style={styles.cycleText}>CICLO {session.cycleNumber}</Text></View> : null}
           </View>
           <View style={styles.programCards}>
@@ -465,7 +492,7 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
         <View style={styles.workoutHero}>
           <View style={commonStyles.between}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.selectorLabel}>HEVY-STYLE LOGGER</Text>
+              <Text style={styles.selectorLabel}>ACTIVE WORKOUT</Text>
               <Text style={styles.workoutTitle}>{session.name}</Text>
               <Text style={styles.workoutSubtitle}>{session.exercises.length} exercicios - {totalSets} sets registrados</Text>
             </View>
@@ -506,7 +533,24 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
 
       <ModalShell visible={addOpen} title="Adicionar exercício" onClose={() => setAddOpen(false)}>
         <ScrollView>
-          {exerciseLibrary.map(item => <Pressable key={item.id} style={styles.libraryItem} onPress={() => addExercise(item)}><Text style={commonStyles.cardTitle}>{item.name}</Text><Text style={commonStyles.muted}>Sem prescrição automática.</Text></Pressable>)}
+          <TextInput value={libraryQuery} onChangeText={setLibraryQuery} placeholder="Buscar exercício, músculo ou equipamento" placeholderTextColor={colors.textDim} style={styles.librarySearch} />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.libraryFilters}>
+            <Chip label="Todos" selected={libraryMuscle === 'all'} onPress={() => setLibraryMuscle('all')} />
+            {muscleOrder.map(muscle => (
+              <Chip key={muscle} label={muscleLabel(muscle)} selected={libraryMuscle === muscle} onPress={() => setLibraryMuscle(muscle)} />
+            ))}
+          </ScrollView>
+          {libraryGroups.map(group => (
+            <View key={group.muscle} style={styles.libraryGroup}>
+              <Text style={styles.libraryGroupTitle}>{muscleLabel(group.muscle)}</Text>
+              {group.items.map(item => (
+                <Pressable key={item.id} style={styles.libraryItem} onPress={() => addExercise(item)}>
+                  <Text style={commonStyles.cardTitle}>{item.name}</Text>
+                  <Text style={commonStyles.muted}>{muscleLabel(item.template.primaryMuscles[0])} · {item.template.equipment}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ))}
         </ScrollView>
       </ModalShell>
 
@@ -520,13 +564,19 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
 }
 
 const styles = StyleSheet.create({
-  selector: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 20, padding: 14, marginBottom: 18 },
+  appHeader: { marginTop: 4, marginBottom: 12 },
+  appTitle: { color: colors.text, fontSize: 34, fontWeight: '900', letterSpacing: -0.8 },
+  appSubtitle: { color: colors.muted, fontSize: 13, fontWeight: '700', marginTop: 4 },
+  startEmptyButton: { backgroundColor: colors.accent, borderRadius: 14, minHeight: 54, alignItems: 'center', justifyContent: 'center', marginBottom: 18 },
+  startEmptyText: { color: colors.text, fontSize: 16, fontWeight: '900' },
+  sectionHeading: { color: colors.text, fontSize: 20, fontWeight: '900', marginBottom: 10 },
+  selector: { backgroundColor: 'transparent', borderColor: colors.border, borderWidth: 0, borderRadius: 0, padding: 0, marginBottom: 18 },
   selectorLabel: { color: colors.accent, fontSize: 9, fontWeight: '800', letterSpacing: 1 },
   selectorTitle: { color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 3 },
   cycleBadge: { backgroundColor: colors.accentSoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
   cycleText: { color: colors.accent, fontSize: 8, fontWeight: '800' },
   programCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 },
-  programCard: { width: '48.4%', minHeight: 96, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 12, backgroundColor: colors.elevated },
+  programCard: { width: '48.4%', minHeight: 96, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 12, backgroundColor: colors.card },
   programCardSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
   programCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   programCardCode: { color: colors.text, fontSize: 20, fontWeight: '900' },
@@ -541,7 +591,7 @@ const styles = StyleSheet.create({
   programCardDescription: { color: colors.textDim, fontSize: 9, marginTop: 4 },
   programCardDescriptionSelected: { color: '#D9E6FF' },
   programCardActive: { color: colors.text, fontSize: 8, fontWeight: '900', marginTop: 8, letterSpacing: 1 },
-  workoutHero: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 22, padding: 16, marginTop: 10, marginBottom: 4 },
+  workoutHero: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16, marginTop: 10, marginBottom: 4 },
   workoutTitle: { color: colors.text, fontSize: 30, fontWeight: '900', letterSpacing: -0.6, marginTop: 4 },
   workoutSubtitle: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 4 },
   exerciseCard: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 22, padding: 14, marginTop: 14 },
@@ -610,5 +660,9 @@ const styles = StyleSheet.create({
   metricLabel: { color: colors.muted, fontSize: 9, textAlign: 'center', marginTop: 3, fontWeight: '900' },
   timer: { backgroundColor: colors.accentSoft, borderColor: colors.accentBorder, borderWidth: 1, borderRadius: 12, padding: 13, marginTop: 14 },
   timerValue: { color: colors.text, fontSize: 22, fontWeight: '800', marginTop: 2 },
+  librarySearch: { minHeight: 48, color: colors.text, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 14, padding: 12, marginBottom: 8 },
+  libraryFilters: { gap: 8, paddingVertical: 8, paddingRight: 20 },
+  libraryGroup: { marginTop: 12 },
+  libraryGroupTitle: { color: colors.text, fontSize: 15, fontWeight: '900', marginBottom: 4 },
   libraryItem: { paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
 });

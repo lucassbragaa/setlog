@@ -2,10 +2,11 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { computePRs, completedSessions, normalizeExerciseKey } from '../data/analytics';
+import { matchesMuscle, muscleLabel, muscleOrder, primaryMuscle } from '../data/exerciseTaxonomy';
 import { estimated1Rm, setVolumeKg } from '../data/setMetrics';
 import { colors, radius, type } from '../theme';
-import type { ExerciseBlock, ExerciseTemplate, LoggedSet, ProgramTemplate, WorkoutSession } from '../types/training';
-import { commonStyles, ModalShell, ScreenTitle } from '../ui';
+import type { ExerciseBlock, ExerciseTemplate, LoggedSet, MuscleGroup, ProgramTemplate, WorkoutSession } from '../types/training';
+import { Chip, commonStyles, ModalShell, ScreenTitle } from '../ui';
 
 type ExerciseIndexItem = {
   key: string;
@@ -44,7 +45,7 @@ function kg(value: number) {
 
 function muscles(template?: ExerciseTemplate) {
   if (!template) return 'Sem mapeamento muscular';
-  return [...template.primaryMuscles, ...(template.secondaryMuscles ?? [])].join(' / ');
+  return [...template.primaryMuscles, ...(template.secondaryMuscles ?? [])].map(muscleLabel).join(' / ');
 }
 
 function buildExerciseIndex(history: WorkoutSession[], programs: ProgramTemplate[], templates: ExerciseTemplate[]): ExerciseIndexItem[] {
@@ -117,6 +118,7 @@ export function ExercisesScreen({ history, programs, exerciseTemplates }: {
   exerciseTemplates: ExerciseTemplate[];
 }) {
   const [query, setQuery] = useState('');
+  const [selectedMuscle, setSelectedMuscle] = useState<MuscleGroup | 'all'>('all');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const index = useMemo(() => buildExerciseIndex(history, programs, exerciseTemplates), [history, programs, exerciseTemplates]);
   const prs = useMemo(() => computePRs(history), [history]);
@@ -132,11 +134,21 @@ export function ExercisesScreen({ history, programs, exerciseTemplates }: {
 
   const filtered = index.filter(item => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return true;
-    return item.name.toLowerCase().includes(needle)
+    const matchesQuery = !needle || item.name.toLowerCase().includes(needle)
       || muscles(item.template).toLowerCase().includes(needle)
       || item.template?.equipment.toLowerCase().includes(needle);
+    return matchesQuery && matchesMuscle(item.template, selectedMuscle);
   });
+
+  const grouped = muscleOrder
+    .map(muscle => ({
+      muscle,
+      items: filtered.filter(item => primaryMuscle(item.template) === muscle),
+    }))
+    .filter(group => group.items.length > 0);
+
+  const ungrouped = filtered.filter(item => !item.template);
+  if (ungrouped.length) grouped.push({ muscle: 'full-body', items: ungrouped });
 
   return (
     <>
@@ -153,27 +165,38 @@ export function ExercisesScreen({ history, programs, exerciseTemplates }: {
           <View style={styles.metric}><Text style={styles.metricValue}>{index.length}</Text><Text style={styles.metricLabel}>exercicios</Text></View>
           <View style={styles.metric}><Text style={styles.metricValue}>{index.filter(item => item.logCount > 0).length}</Text><Text style={styles.metricLabel}>com logs</Text></View>
         </View>
-        {filtered.map(item => {
-          const pr = prs.get(item.key);
-          return (
-            <Pressable key={item.key} style={commonStyles.card} onPress={() => setSelectedKey(item.key)}>
-              <View style={commonStyles.between}>
-                <View style={{ flex: 1 }}>
-                  <Text style={commonStyles.cardTitle}>{item.name}</Text>
-                  <Text style={commonStyles.muted}>{muscles(item.template)}</Text>
-                </View>
-                <View style={styles.chevron}><Text style={styles.chevronText}>›</Text></View>
-              </View>
-              <View style={styles.metaRow}>
-                <Meta label="rotinas" value={String(item.routineCount)} />
-                <Meta label="logs" value={String(item.logCount)} />
-                <Meta label="volume" value={kg(item.totalVolume)} />
-              </View>
-              <Text style={styles.lastLine}>Ultimo: {formatSet(item.lastSet)} · {formatDate(item.lastSession?.startedAt)}</Text>
-              {pr ? <Text style={styles.prLine}>PR e1RM {pr.bestE1rm.toFixed(1)}kg · melhor carga {pr.bestWeight.toFixed(1)}kg</Text> : null}
-            </Pressable>
-          );
-        })}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.muscleFilters}>
+          <Chip label="Todos" selected={selectedMuscle === 'all'} onPress={() => setSelectedMuscle('all')} />
+          {muscleOrder.map(muscle => (
+            <Chip key={muscle} label={muscleLabel(muscle)} selected={selectedMuscle === muscle} onPress={() => setSelectedMuscle(muscle)} />
+          ))}
+        </ScrollView>
+        {grouped.map(group => (
+          <View key={group.muscle} style={styles.group}>
+            <Text style={styles.groupTitle}>{muscleLabel(group.muscle)}</Text>
+            {group.items.map(item => {
+              const pr = prs.get(item.key);
+              return (
+                <Pressable key={item.key} style={styles.exerciseCard} onPress={() => setSelectedKey(item.key)}>
+                  <View style={commonStyles.between}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={commonStyles.cardTitle}>{item.name}</Text>
+                      <Text style={commonStyles.muted}>{muscles(item.template)}</Text>
+                    </View>
+                    <View style={styles.chevron}><Text style={styles.chevronText}>›</Text></View>
+                  </View>
+                  <View style={styles.metaRow}>
+                    <Meta label="rotinas" value={String(item.routineCount)} />
+                    <Meta label="logs" value={String(item.logCount)} />
+                    <Meta label="volume" value={kg(item.totalVolume)} />
+                  </View>
+                  <Text style={styles.lastLine}>Ultimo: {formatSet(item.lastSet)} · {formatDate(item.lastSession?.startedAt)}</Text>
+                  {pr ? <Text style={styles.prLine}>PR e1RM {pr.bestE1rm.toFixed(1)}kg · melhor carga {pr.bestWeight.toFixed(1)}kg</Text> : null}
+                </Pressable>
+              );
+            })}
+          </View>
+        ))}
       </ScrollView>
 
       <ModalShell visible={Boolean(selected)} title={selected?.name ?? 'Exercicio'} onClose={() => setSelectedKey(null)}>
@@ -231,6 +254,10 @@ function Meta({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   search: { minHeight: 50, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated, color: colors.text, paddingHorizontal: 14, marginTop: 14, fontSize: type.md, fontWeight: '700' },
   summaryGrid: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  muscleFilters: { gap: 8, paddingTop: 12, paddingBottom: 2, paddingRight: 20 },
+  group: { marginTop: 16 },
+  groupTitle: { color: colors.text, fontSize: type.lg, fontWeight: '900', marginBottom: 2 },
+  exerciseCard: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.xl, padding: 16, marginTop: 10 },
   metric: { flex: 1, backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 14 },
   metricValue: { color: colors.text, fontSize: 26, fontWeight: '900' },
   metricLabel: { color: colors.muted, fontSize: type.xs, fontWeight: '900', marginTop: 4, textTransform: 'uppercase' },

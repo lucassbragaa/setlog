@@ -2,9 +2,10 @@ import { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { exerciseLibrary } from '../data/appDefaults';
+import { matchesMuscle, muscleLabel, muscleOrder } from '../data/exerciseTaxonomy';
 import { configForTechnique, emptyPrescription, exerciseWithPrescriptions, prescriptionSummary, prescriptionsFor, techniqueLabel, techniqueOptions, techniqueProfile } from '../data/techniques';
 import { colors } from '../theme';
-import type { ProgramExercise, ProgramTemplate, RoutineFolder, SetPrescription } from '../types/training';
+import type { MuscleGroup, ProgramExercise, ProgramTemplate, RoutineFolder, SetPrescription } from '../types/training';
 import { ActionButton, Chip, commonStyles, ModalShell, ScreenTitle, Stepper } from '../ui';
 
 type EditorTarget = { programId: string; exerciseIndex: number };
@@ -108,6 +109,8 @@ export function ProgramsScreen({ programs, folders, onStart, onDuplicate, onCrea
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [programEditor, setProgramEditor] = useState<ProgramEditorTarget | null>(null);
   const [newExerciseName, setNewExerciseName] = useState('');
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryMuscle, setLibraryMuscle] = useState<MuscleGroup | 'all'>('all');
   const [movingExercise, setMovingExercise] = useState<EditorTarget | null>(null);
   const longPressReorderRef = useRef(false);
   const program = editor ? programs.find(item => item.id === editor.programId) : undefined;
@@ -119,6 +122,22 @@ export function ProgramsScreen({ programs, folders, onStart, onDuplicate, onCrea
     const bFolder = folderById.get(b.folderId ?? 'folder-custom')?.order ?? 999;
     return aFolder - bFolder || (a.order ?? 999) - (b.order ?? 999) || a.name.localeCompare(b.name, 'pt-BR');
   }), [folderById, programs]);
+  const filteredLibrary = useMemo(() => {
+    const needle = libraryQuery.trim().toLowerCase();
+    return exerciseLibrary.filter(item => {
+      const matchesQuery = !needle
+        || item.name.toLowerCase().includes(needle)
+        || item.template.equipment.toLowerCase().includes(needle)
+        || [...item.template.primaryMuscles, ...(item.template.secondaryMuscles ?? [])].map(muscleLabel).join(' ').toLowerCase().includes(needle);
+      return matchesQuery && matchesMuscle(item.template, libraryMuscle);
+    });
+  }, [libraryMuscle, libraryQuery]);
+  const libraryGroups = useMemo(() => muscleOrder
+    .map(muscle => ({
+      muscle,
+      items: filteredLibrary.filter(item => item.template.primaryMuscles[0] === muscle),
+    }))
+    .filter(group => group.items.length > 0), [filteredLibrary]);
 
   function updateProgram(program: ProgramTemplate) {
     onUpdate(program);
@@ -308,14 +327,27 @@ export function ProgramsScreen({ programs, folders, onStart, onDuplicate, onCrea
               <Text style={styles.sectionTitle}>ADICIONAR EXERCÍCIO</Text>
               <TextInput value={newExerciseName} onChangeText={setNewExerciseName} placeholder="Nome livre do exercício" placeholderTextColor={colors.textDim} style={styles.input} />
               <ActionButton label="ADICIONAR NOME LIVRE" disabled={!newExerciseName.trim()} onPress={() => addExerciseToProgram(editedProgram, blankExercise(newExerciseName))} />
-              <Text style={[commonStyles.muted, { marginTop: 12 }]}>Ou escolha um exercício que já existe nos treinos A/B:</Text>
-              <View style={styles.libraryGrid}>
-                {exerciseLibrary.map(item => (
-                  <Pressable key={item.id} style={styles.libraryPill} onPress={() => addExerciseToProgram(editedProgram, exerciseFromLibrary(item))}>
-                    <Text style={styles.libraryPillText}>{item.name}</Text>
-                  </Pressable>
+              <Text style={[commonStyles.muted, { marginTop: 12 }]}>Ou escolha na biblioteca por músculo:</Text>
+              <TextInput value={libraryQuery} onChangeText={setLibraryQuery} placeholder="Buscar exercício, músculo ou equipamento" placeholderTextColor={colors.textDim} style={styles.input} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.libraryFilters}>
+                <Chip label="Todos" selected={libraryMuscle === 'all'} onPress={() => setLibraryMuscle('all')} />
+                {muscleOrder.map(muscle => (
+                  <Chip key={muscle} label={muscleLabel(muscle)} selected={libraryMuscle === muscle} onPress={() => setLibraryMuscle(muscle)} />
                 ))}
-              </View>
+              </ScrollView>
+              {libraryGroups.map(group => (
+                <View key={group.muscle} style={styles.libraryGroup}>
+                  <Text style={styles.libraryGroupTitle}>{muscleLabel(group.muscle)}</Text>
+                  <View style={styles.libraryGrid}>
+                    {group.items.map(item => (
+                      <Pressable key={item.id} style={styles.libraryPill} onPress={() => addExerciseToProgram(editedProgram, exerciseFromLibrary(item))}>
+                        <Text style={styles.libraryPillText}>{item.name}</Text>
+                        <Text style={styles.libraryMeta}>{muscleLabel(item.template.primaryMuscles[0])} · {item.template.equipment}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              ))}
             </ScrollView>
             <ActionButton label="CONCLUIR" onPress={() => setProgramEditor(null)} />
           </>
@@ -392,7 +424,11 @@ const styles = StyleSheet.create({
   steppers: { flexDirection: 'row', gap: 8, marginTop: 10 },
   input: { color: colors.text, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 12, minHeight: 44 },
   notes: { minHeight: 96, color: colors.text, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 12, padding: 12, textAlignVertical: 'top' },
+  libraryFilters: { gap: 8, paddingVertical: 10, paddingRight: 20 },
+  libraryGroup: { marginTop: 12 },
+  libraryGroupTitle: { color: colors.text, fontSize: 14, fontWeight: '900', marginBottom: 8 },
   libraryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 10 },
-  libraryPill: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 7, backgroundColor: colors.elevated },
+  libraryPill: { width: '48%', borderWidth: 1, borderColor: colors.border, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 9, backgroundColor: colors.elevated },
   libraryPillText: { color: colors.muted, fontSize: 10, fontWeight: '700' },
+  libraryMeta: { color: colors.textDim, fontSize: 8, fontWeight: '800', marginTop: 4, textTransform: 'uppercase' },
 });
