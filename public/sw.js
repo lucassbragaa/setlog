@@ -1,4 +1,4 @@
-const CACHE_NAME = 'setlog-shell-v2';
+const CACHE_NAME = 'setlog-shell-v4';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -14,6 +14,10 @@ self.addEventListener('install', event => {
       .then(cache => cache.addAll(APP_SHELL))
       .then(() => self.skipWaiting()),
   );
+});
+
+self.addEventListener('message', event => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {

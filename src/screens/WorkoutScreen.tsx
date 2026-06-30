@@ -415,7 +415,7 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
         <View style={styles.workoutHero}>
           <View style={commonStyles.between}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.selectorLabel}>WORKOUT IN PROGRESS</Text>
+              <Text style={styles.selectorLabel}>HEVY-STYLE LOGGER</Text>
               <Text style={styles.workoutTitle}>{session.name}</Text>
               <Text style={styles.workoutSubtitle}>{session.exercises.length} exercicios - {totalSets} sets registrados</Text>
             </View>
