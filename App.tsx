@@ -69,6 +69,28 @@ const numericValue = (value: string) => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const parseDateInput = (value: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+
+  const [, year, month, day] = match;
+  const parsed = new Date(Number(year), Number(month) - 1, Number(day));
+  if (Number.isNaN(parsed.getTime())) return null;
+
+  return parsed;
+};
+
+const dateInputValue = (iso?: string) => {
+  const date = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(date.getTime())) return dateInputValue();
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+};
+
 const makeSet = (index: number, type: SetType, weight: number | null, reps: number | null, rpe: number | null): TrainingSet => ({
   id: `set-${Date.now()}-${index}`,
   index,
@@ -179,9 +201,11 @@ export default function App() {
       if (!current.active_workout) return current;
 
       const start = new Date(current.active_workout.start_time);
-      const chosenDate = new Date(date);
+      const chosenDate = parseDateInput(date);
+      const finishedAt = new Date();
+      const activeDurationMs = Math.max(0, finishedAt.getTime() - start.getTime());
       const normalizedStart =
-        Number.isNaN(chosenDate.getTime())
+        chosenDate === null || Number.isNaN(start.getTime())
           ? current.active_workout.start_time
           : new Date(
               chosenDate.getFullYear(),
@@ -196,7 +220,7 @@ export default function App() {
         title: title.trim() || current.active_workout.title,
         description,
         start_time: normalizedStart,
-        end_time: new Date().toISOString(),
+        end_time: new Date(new Date(normalizedStart).getTime() + activeDurationMs).toISOString(),
         updated_at: new Date().toISOString(),
         exercises: current.active_workout.exercises.map(exercise => ({
           ...exercise,
@@ -379,7 +403,13 @@ export default function App() {
       <ProfileScreen
         data={data}
         lastSavedAt={lastSavedAt}
-        onReset={() => resetAppData().then(setData)}
+        onReset={() => {
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && !window.confirm('Resetar todos os dados locais do Setlog neste aparelho?')) {
+            return;
+          }
+
+          resetAppData().then(setData);
+        }}
         onUpdateSettings={settings => patchData(current => ({ ...current, settings: { ...current.settings, ...settings } }))}
       />
     ),
@@ -462,7 +492,7 @@ function WorkoutScreen({
         <HeroHeader eyebrow="Start Workout" title="Workout" subtitle="Comece vazio ou escolha uma rotina. O treino vira um log salvo ao finalizar." />
         <PrimaryButton label="Start Empty Workout" onPress={onStartEmpty} />
 
-        <SectionHeader title="Routines" action="New routine fica na aba Routines" />
+        <SectionHeader title="Routines" action="Manage templates in Routines" />
         <View style={styles.cardGrid}>
           {data.routines.map(routine => (
             <Pressable key={routine.id} style={styles.routineLaunchCard} onPress={() => onStartRoutine(routine)}>
@@ -953,12 +983,12 @@ function FinishWorkoutSheet({
   onFinish: (title: string, date: string, description: string) => void;
 }) {
   const [title, setTitle] = useState(workout?.title ?? '');
-  const [date, setDate] = useState(workout ? workout.start_time.slice(0, 10) : new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(dateInputValue(workout?.start_time));
   const [description, setDescription] = useState(workout?.description ?? '');
 
   useEffect(() => {
     setTitle(workout?.title ?? '');
-    setDate(workout ? workout.start_time.slice(0, 10) : new Date().toISOString().slice(0, 10));
+    setDate(dateInputValue(workout?.start_time));
     setDescription(workout?.description ?? '');
   }, [workout?.id]);
 
