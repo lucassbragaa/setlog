@@ -212,6 +212,19 @@ export function ExercisesScreen({ history, programs, exerciseTemplates }: {
                 <Meta label="sets" value={String(selected.setCount)} />
               </View>
             </View>
+            <View style={styles.howToCard}>
+              <Text style={styles.howToTitle}>How To</Text>
+              <View style={styles.demoBox}>
+                <Text style={styles.demoIcon}>↕</Text>
+                <Text style={styles.demoText}>Demo animation placeholder</Text>
+              </View>
+              {(selected.template?.instructions ?? ['Ajuste setup, amplitude e estabilidade antes do set efetivo.', 'Registre carga, reps e RIR de forma consistente.']).map((instruction, index) => (
+                <View key={instruction + index} style={styles.instructionRow}>
+                  <Text style={styles.instructionNumber}>{index + 1}</Text>
+                  <Text style={styles.instructionText}>{instruction}</Text>
+                </View>
+              ))}
+            </View>
             {selectedLogs.length === 0 ? (
               <View style={styles.empty}><Text style={commonStyles.muted}>Ainda nao ha historico finalizado para este exercicio.</Text></View>
             ) : selectedLogs.map(log => (
@@ -272,6 +285,14 @@ const styles = StyleSheet.create({
   modalHero: { backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 14 },
   modalTitle: { color: colors.text, fontSize: type.xl, fontWeight: '900' },
   mappingLine: { color: colors.textDim, fontSize: type.xs, fontWeight: '800', marginTop: 8 },
+  howToCard: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 12, marginTop: 12 },
+  howToTitle: { color: colors.text, fontSize: type.lg, fontWeight: '900' },
+  demoBox: { minHeight: 120, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.elevated, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
+  demoIcon: { color: colors.accent, fontSize: 32, fontWeight: '900' },
+  demoText: { color: colors.muted, fontSize: type.xs, fontWeight: '900', marginTop: 6, textTransform: 'uppercase' },
+  instructionRow: { flexDirection: 'row', gap: 9, alignItems: 'flex-start', marginTop: 10 },
+  instructionNumber: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.accentSoft, color: colors.accent, textAlign: 'center', lineHeight: 22, fontSize: type.xs, fontWeight: '900' },
+  instructionText: { flex: 1, color: colors.muted, fontSize: type.sm, lineHeight: 18, fontWeight: '700' },
   empty: { paddingVertical: 20, alignItems: 'center' },
   logCard: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: radius.lg, padding: 12, marginTop: 12 },
   logTitle: { color: colors.text, fontWeight: '900', fontSize: type.md },
