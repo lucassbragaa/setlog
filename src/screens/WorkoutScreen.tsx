@@ -130,12 +130,14 @@ function TechniqueExecutionInputs({ type, config, segments, durationSeconds, onC
 }
 
 
-function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistoricalE1rm, onChange, onRemove }: {
+function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistoricalE1rm, expanded, onToggle, onChange, onRemove }: {
   block: ExerciseBlock;
   sessionStartedAt: string;
   index: number;
   previousSets: LoggedSet[];
   bestHistoricalE1rm: number;
+  expanded: boolean;
+  onToggle: () => void;
   onChange: (block: ExerciseBlock) => void;
   onRemove: () => void;
 }) {
@@ -228,7 +230,7 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
   return (
     <View style={styles.exerciseCard}>
       <View style={styles.exerciseTop}>
-        <View style={styles.exerciseHeader}>
+        <Pressable style={styles.exerciseHeader} onPress={onToggle}>
           <View style={styles.number}><Text style={styles.numberText}>{String(index + 1).padStart(2, '0')}</Text></View>
           <View style={{ flex: 1 }}>
             <Text style={styles.exerciseCardTitle}>{block.exerciseName}</Text>
@@ -238,7 +240,7 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
             {block.notes ? <Text style={styles.notePreview}>Obs.: {block.notes}</Text> : null}
             <PRBadge visible={prVisible} onDone={() => setPrVisible(false)} />
           </View>
-        </View>
+        </Pressable>
         <Pressable onPress={() => setMenu(value => !value)}><Text style={styles.more}>...</Text></Pressable>
       </View>
 
@@ -248,6 +250,21 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
           <ActionButton label="Remover exercicio" tone="danger" onPress={onRemove} />
         </View>
       )}
+
+      {!expanded ? (
+        <Pressable style={styles.compactExerciseFooter} onPress={onToggle}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.compactMeta}>{block.sets.length} logged sets</Text>
+            <Text numberOfLines={1} style={styles.compactPrevious}>
+              {block.sets.length ? 'Last: ' + compactSet(block.sets[block.sets.length - 1]) : previousSetsSummary(previousSets) ? 'Previous: ' + previousSetsSummary(previousSets) : 'Tap to log this exercise'}
+            </Text>
+          </View>
+          <Text style={styles.openExercise}>Open</Text>
+        </Pressable>
+      ) : null}
+
+      {!expanded ? null : (
+      <>
 
       <View style={styles.setTable}>
         <View style={styles.tableHeader}>
@@ -357,6 +374,8 @@ function ExerciseCard({ block, index, sessionStartedAt, previousSets, bestHistor
         </View>
       )}
       <ActionButton label={'ADICIONAR SET ' + (block.sets.length + 1)} onPress={logSet} />
+      </>
+      )}
     </View>
   );
 }
@@ -377,6 +396,7 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
   const [timerRunning, setTimerRunning] = useState(false);
   const [libraryQuery, setLibraryQuery] = useState('');
   const [libraryMuscle, setLibraryMuscle] = useState<MuscleGroup | 'all'>('all');
+  const [activeExerciseId, setActiveExerciseId] = useState(session.exercises[0]?.id ?? '');
   const totalSets = session.exercises.reduce((total, exercise) => total + exercise.sets.length, 0);
   const volume = useMemo(() => session.exercises.flatMap(exercise => exercise.sets).reduce((total, set) => total + setVolumeKg(set), 0), [session]);
   const workoutPrograms = programs.filter(program => isProgramCode(program.name));
@@ -418,6 +438,14 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
     return () => clearInterval(timer);
   }, [timerRunning]);
 
+  useEffect(() => {
+    if (session.exercises.length === 0) {
+      setActiveExerciseId('');
+      return;
+    }
+    if (!session.exercises.some(exercise => exercise.id === activeExerciseId)) setActiveExerciseId(session.exercises[0].id);
+  }, [activeExerciseId, session.exercises]);
+
   function requestProgram(program: ProgramTemplate) {
     if (program.id === session.programId || program.name === session.name) return;
     if (totalSets > 0) setPendingProgram(program);
@@ -435,10 +463,11 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
 
   function addExercise(item: typeof exerciseLibrary[number]) {
     const now = Date.now();
+    const blockId = 'block-' + now;
     onChange({
       ...session,
       exercises: [...session.exercises, {
-        id: 'block-' + now,
+        id: blockId,
         exerciseId: item.id,
         exerciseName: item.name,
         targetSets: 0,
@@ -449,6 +478,7 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
         sets: [],
       }],
     });
+    setActiveExerciseId(blockId);
     setAddOpen(false);
   }
 
@@ -457,7 +487,7 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
       <ScrollView contentContainerStyle={commonStyles.screen} showsVerticalScrollIndicator={false}>
         <View style={styles.appHeader}>
           <Text style={styles.appTitle}>Workout</Text>
-          <Text style={styles.appSubtitle}>Log rápido, previous values e rotinas organizadas.</Text>
+          <Text style={styles.appSubtitle}>Start a routine, log each set, compare against previous blocks.</Text>
         </View>
         <Pressable style={styles.startEmptyButton} onPress={() => setAddOpen(true)}>
           <Text style={styles.startEmptyText}>Start Empty Workout</Text>
@@ -465,7 +495,7 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
         <Text style={styles.sectionHeading}>Routines</Text>
         <View style={styles.selector}>
           <View style={commonStyles.between}>
-            <View><Text style={styles.selectorLabel}>MY ROUTINES</Text><Text style={styles.selectorTitle}>Escolha A1–B4</Text></View>
+            <View><Text style={styles.selectorLabel}>MY ROUTINES</Text><Text style={styles.selectorTitle}>Choose today's workout</Text></View>
             {session.cycleNumber ? <View style={styles.cycleBadge}><Text style={styles.cycleText}>CICLO {session.cycleNumber}</Text></View> : null}
           </View>
           <View style={styles.programCards}>
@@ -480,9 +510,9 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
                       <Text style={[styles.programSplitText, selected && styles.programSplitTextSelected]}>{splitLabel}</Text>
                     </View>
                   </View>
-                  <Text style={[styles.programCardDetail, selected && styles.programCardDetailSelected]}>{program.exercises.length} exercicios</Text>
-                  <Text numberOfLines={1} style={[styles.programCardDescription, selected && styles.programCardDescriptionSelected]}>{program.description || 'Treino personalizado'}</Text>
-                  {selected ? <Text style={styles.programCardActive}>ATIVO</Text> : null}
+                  <Text style={[styles.programCardDetail, selected && styles.programCardDetailSelected]}>{program.exercises.length} exercises</Text>
+                  <Text numberOfLines={1} style={[styles.programCardDescription, selected && styles.programCardDescriptionSelected]}>{program.description || 'Custom routine'}</Text>
+                  {selected ? <Text style={styles.programCardActive}>ACTIVE</Text> : null}
                 </Pressable>
               );
             })}
@@ -494,7 +524,7 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
             <View style={{ flex: 1 }}>
               <Text style={styles.selectorLabel}>ACTIVE WORKOUT</Text>
               <Text style={styles.workoutTitle}>{session.name}</Text>
-              <Text style={styles.workoutSubtitle}>{session.exercises.length} exercicios - {totalSets} sets registrados</Text>
+              <Text style={styles.workoutSubtitle}>{session.exercises.length} exercises - {totalSets} logged sets</Text>
             </View>
             <View style={styles.live}><View style={styles.dot} /><Text style={styles.liveText}>LIVE</Text></View>
           </View>
@@ -519,7 +549,18 @@ export function WorkoutScreen({ session, programs, history, saveStatus, onChange
         ) : null}
 
         {session.exercises.map((block, index) => (
-          <ExerciseCard key={block.id} block={block} index={index} sessionStartedAt={session.startedAt} previousSets={previousSetsMap.get(block.id) ?? []} bestHistoricalE1rm={bestE1rmMap.get(block.id) ?? 0} onChange={next => updateBlock(block.id, next)} onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })} />
+          <ExerciseCard
+            key={block.id}
+            block={block}
+            index={index}
+            sessionStartedAt={session.startedAt}
+            previousSets={previousSetsMap.get(block.id) ?? []}
+            bestHistoricalE1rm={bestE1rmMap.get(block.id) ?? 0}
+            expanded={activeExerciseId === block.id}
+            onToggle={() => setActiveExerciseId(current => current === block.id ? '' : block.id)}
+            onChange={next => updateBlock(block.id, next)}
+            onRemove={() => onChange({ ...session, exercises: session.exercises.filter(item => item.id !== block.id) })}
+          />
         ))}
         <ActionButton label="+ ADICIONAR EXERCÍCIO" tone="secondary" onPress={() => setAddOpen(true)} />
         <ActionButton label="Finalizar treino" tone="danger" disabled={totalSets === 0} onPress={() => setFinishOpen(true)} />
@@ -575,9 +616,9 @@ const styles = StyleSheet.create({
   selectorTitle: { color: colors.text, fontSize: 17, fontWeight: '800', marginTop: 3 },
   cycleBadge: { backgroundColor: colors.accentSoft, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 5 },
   cycleText: { color: colors.accent, fontSize: 8, fontWeight: '800' },
-  programCards: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 12 },
-  programCard: { width: '48.4%', minHeight: 96, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 12, backgroundColor: colors.card },
-  programCardSelected: { backgroundColor: colors.accent, borderColor: colors.accent },
+  programCards: { gap: 8, marginTop: 12 },
+  programCard: { width: '100%', minHeight: 84, borderColor: colors.border, borderWidth: 1, borderRadius: 14, padding: 13, backgroundColor: colors.card },
+  programCardSelected: { backgroundColor: colors.elevated, borderColor: colors.accent },
   programCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
   programCardCode: { color: colors.text, fontSize: 20, fontWeight: '900' },
   programCardCodeSelected: { color: colors.text },
@@ -587,11 +628,11 @@ const styles = StyleSheet.create({
   programSplitText: { color: colors.accent, fontSize: 8, fontWeight: '900', textTransform: 'uppercase' },
   programSplitTextSelected: { color: colors.text },
   programCardDetail: { color: colors.muted, fontSize: 11, fontWeight: '800', marginTop: 10 },
-  programCardDetailSelected: { color: colors.text },
+  programCardDetailSelected: { color: colors.accent },
   programCardDescription: { color: colors.textDim, fontSize: 9, marginTop: 4 },
-  programCardDescriptionSelected: { color: '#D9E6FF' },
-  programCardActive: { color: colors.text, fontSize: 8, fontWeight: '900', marginTop: 8, letterSpacing: 1 },
-  workoutHero: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 18, padding: 16, marginTop: 10, marginBottom: 4 },
+  programCardDescriptionSelected: { color: colors.muted },
+  programCardActive: { color: colors.accent, fontSize: 8, fontWeight: '900', marginTop: 8, letterSpacing: 1 },
+  workoutHero: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 16, marginTop: 10, marginBottom: 4 },
   workoutTitle: { color: colors.text, fontSize: 30, fontWeight: '900', letterSpacing: -0.6, marginTop: 4 },
   workoutSubtitle: { color: colors.muted, fontSize: 12, fontWeight: '700', marginTop: 4 },
   exerciseCard: { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, borderRadius: 22, padding: 14, marginTop: 14 },
@@ -607,6 +648,10 @@ const styles = StyleSheet.create({
   previousLabel: { color: colors.textDim, fontSize: 8, fontWeight: '900', letterSpacing: 1 },
   previousSets: { color: colors.muted, fontSize: 10, fontStyle: 'italic', marginTop: 2 },
   inlineMenu: { backgroundColor: colors.elevated, borderRadius: 10, padding: 8, marginTop: 10 },
+  compactExerciseFooter: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: colors.elevated, borderColor: colors.border, borderWidth: 1, borderRadius: 13, padding: 11, marginTop: 12 },
+  compactMeta: { color: colors.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.7 },
+  compactPrevious: { color: colors.text, fontSize: 12, fontWeight: '800', marginTop: 4 },
+  openExercise: { color: colors.accent, fontSize: 11, fontWeight: '900', textTransform: 'uppercase' },
   setTable: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, overflow: 'hidden', marginTop: 14, backgroundColor: colors.background },
   tableHeader: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.elevated, paddingVertical: 8, paddingHorizontal: 7 },
   column: { flex: 0.85, color: colors.muted, fontSize: 9, textAlign: 'center', fontWeight: '900' },

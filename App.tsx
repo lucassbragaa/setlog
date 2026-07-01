@@ -8,9 +8,8 @@ import { currentCycleNumber, isProgramCode } from './src/data/cycles';
 import { nowOnLocalDate } from './src/data/sessionDates';
 import { chooseBackupFile, exportBackup } from './src/platform/backup';
 import { setupPwa } from './src/platform/pwa';
-import { AnalyticsScreen } from './src/screens/AnalyticsScreen';
 import { ExercisesScreen } from './src/screens/ExercisesScreen';
-import { HistoryScreen } from './src/screens/HistoryScreen';
+import { HomeFeedScreen } from './src/screens/HomeFeedScreen';
 import { ProfileScreen } from './src/screens/ProfileScreen';
 import { ProgramsScreen } from './src/screens/ProgramsScreen';
 import { WorkoutScreen } from './src/screens/WorkoutScreen';
@@ -18,7 +17,7 @@ import { loadAppData, loadLegacySets, saveAppData } from './src/storage/workoutS
 import { colors } from './src/theme';
 import type { AppData, ExerciseBlock, ProgramTemplate, WorkoutSession } from './src/types/training';
 
-const tabs = ['Treino', 'Rotinas', 'Exercicios', 'Historico', 'Analises', 'Perfil'] as const;
+const tabs = ['Home', 'Workout', 'Routines', 'Exercises', 'Profile'] as const;
 type Tab = typeof tabs[number];
 
 function emptyContinuation(session: WorkoutSession, cycleNumber?: number): WorkoutSession {
@@ -77,29 +76,26 @@ function syncActiveSessionWithProgram(
 function TabIcon({ tab, active }: { tab: Tab; active: boolean }) {
   const color = active ? colors.accent : colors.textDim;
   const common = { stroke: color, strokeWidth: 2.2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
-  if (tab === 'Treino') {
+  if (tab === 'Home') {
+    return <Svg width={23} height={23} viewBox="0 0 24 24"><Path d="M4 11.5 12 4l8 7.5" {...common} /><Path d="M6.5 10.5V20h11v-9.5" {...common} /><Path d="M10 20v-5h4v5" {...common} /></Svg>;
+  }
+  if (tab === 'Workout') {
     return <Svg width={22} height={22} viewBox="0 0 24 24"><Line x1="5" y1="12" x2="19" y2="12" {...common} /><Rect x="2.5" y="8" width="3" height="8" rx="1" {...common} /><Rect x="18.5" y="8" width="3" height="8" rx="1" {...common} /><Line x1="8" y1="9" x2="8" y2="15" {...common} /><Line x1="16" y1="9" x2="16" y2="15" {...common} /></Svg>;
   }
-  if (tab === 'Perfil') {
+  if (tab === 'Profile') {
     return <Svg width={22} height={22} viewBox="0 0 24 24"><Circle cx="12" cy="8" r="4" {...common} /><Path d="M5 21a7 7 0 0 1 14 0" {...common} /></Svg>;
   }
-  if (tab === 'Rotinas') {
+  if (tab === 'Routines') {
     return <Svg width={22} height={22} viewBox="0 0 24 24"><Rect x="4" y="5" width="16" height="4" rx="1.5" {...common} /><Rect x="4" y="11" width="16" height="4" rx="1.5" {...common} /><Rect x="4" y="17" width="16" height="2" rx="1" {...common} /></Svg>;
   }
-  if (tab === 'Exercicios') {
+  if (tab === 'Exercises') {
     return <Svg width={22} height={22} viewBox="0 0 24 24"><Circle cx="7" cy="12" r="3" {...common} /><Circle cx="17" cy="12" r="3" {...common} /><Line x1="10" y1="12" x2="14" y2="12" {...common} /><Line x1="3" y1="9" x2="3" y2="15" {...common} /><Line x1="21" y1="9" x2="21" y2="15" {...common} /></Svg>;
-  }
-  if (tab === 'Historico') {
-    return <Svg width={22} height={22} viewBox="0 0 24 24"><Circle cx="12" cy="12" r="8" {...common} /><Path d="M12 7v5l3 2" {...common} /></Svg>;
-  }
-  if (tab === 'Analises') {
-    return <Svg width={22} height={22} viewBox="0 0 24 24"><Rect x="4" y="13" width="3" height="7" rx="1" fill={color} /><Rect x="10.5" y="9" width="3" height="11" rx="1" fill={color} /><Rect x="17" y="5" width="3" height="15" rx="1" fill={color} /></Svg>;
   }
   return <Svg width={22} height={22} viewBox="0 0 24 24"><Rect x="4" y="4" width="6" height="6" rx="1.5" {...common} /><Rect x="14" y="4" width="6" height="6" rx="1.5" {...common} /><Rect x="4" y="14" width="6" height="6" rx="1.5" {...common} /><Rect x="14" y="14" width="6" height="6" rx="1.5" {...common} /></Svg>;
 }
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('Treino');
+  const [activeTab, setActiveTab] = useState<Tab>('Home');
   const [data, setData] = useState<AppData>(() => createDefaultData());
   const [ready, setReady] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'loading' | 'saved' | 'error'>('loading');
@@ -152,7 +148,7 @@ export default function App() {
         history,
       };
     });
-    setActiveTab('Historico');
+    setActiveTab('Home');
   }
 
   function startProgram(program: ProgramTemplate) {
@@ -160,7 +156,7 @@ export default function App() {
       ...current,
       activeSession: sessionFromProgram(program, isProgramCode(program.name) ? currentCycleNumber(current.history) : undefined),
     }));
-    setActiveTab('Treino');
+    setActiveTab('Workout');
   }
 
   function duplicateProgram(program: ProgramTemplate) {
@@ -184,7 +180,7 @@ export default function App() {
         exercises: [],
       }],
     }));
-    setActiveTab('Rotinas');
+    setActiveTab('Routines');
   }
 
   async function restoreBackup() {
@@ -210,7 +206,15 @@ export default function App() {
   return (
     <SafeAreaView style={styles.app}>
       <StatusBar style="light" />
-      {activeTab === 'Treino' && (
+      {activeTab === 'Home' && (
+        <HomeFeedScreen
+          history={data.history}
+          programs={data.programs}
+          onStartProgram={startProgram}
+          onOpenWorkout={() => setActiveTab('Workout')}
+        />
+      )}
+      {activeTab === 'Workout' && (
         <WorkoutScreen
           session={data.activeSession}
           programs={data.programs}
@@ -221,17 +225,9 @@ export default function App() {
           onSelectProgram={startProgram}
         />
       )}
-      {activeTab === 'Perfil' && <ProfileScreen history={data.history} data={data} onDataChange={setData} onExport={() => exportBackup(data)} onImport={restoreBackup} />}
-      {activeTab === 'Historico' && (
-        <HistoryScreen
-          history={data.history}
-          onUpdate={updated => setData(current => ({ ...current, history: current.history.map(session => session.id === updated.id ? updated : session) }))}
-          onDelete={id => setData(current => ({ ...current, history: current.history.filter(session => session.id !== id) }))}
-        />
-      )}
-      {activeTab === 'Analises' && <AnalyticsScreen sessions={data.history} exerciseTemplates={data.exerciseTemplates} />}
-      {activeTab === 'Exercicios' && <ExercisesScreen history={data.history} programs={data.programs} exerciseTemplates={data.exerciseTemplates} />}
-      {activeTab === 'Rotinas' && (
+      {activeTab === 'Profile' && <ProfileScreen history={data.history} data={data} onDataChange={setData} onExport={() => exportBackup(data)} onImport={restoreBackup} />}
+      {activeTab === 'Exercises' && <ExercisesScreen history={data.history} programs={data.programs} exerciseTemplates={data.exerciseTemplates} />}
+      {activeTab === 'Routines' && (
         <ProgramsScreen
           programs={data.programs}
           folders={data.routineFolders}
@@ -268,8 +264,8 @@ export default function App() {
 
 const styles = StyleSheet.create({
   app: { flex: 1, backgroundColor: colors.background },
-  tabBar: { position: 'absolute', left: 10, right: 10, bottom: 10, minHeight: 74, backgroundColor: '#10141CF5', borderWidth: 1, borderColor: colors.border, borderRadius: 24, flexDirection: 'row', paddingTop: 10, paddingBottom: 10 },
+  tabBar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 84, backgroundColor: '#0A0D12FA', borderTopWidth: 1, borderTopColor: colors.border, flexDirection: 'row', paddingTop: 8, paddingBottom: 14 },
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 5 },
-  tabText: { color: colors.textDim, fontSize: 8, fontWeight: '800' },
+  tabText: { color: colors.textDim, fontSize: 9, fontWeight: '800' },
   active: { color: colors.accent },
 });
